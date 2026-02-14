@@ -1,0 +1,87 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  name         String?
+  upiId        String?
+  createdAt    DateTime      @default(now())
+  groups       GroupMember[]
+  createdGroups Group[]
+  expensesPaid Expense[]
+  splits       ExpenseSplit[]
+}
+
+model Group {
+  id         String        @id @default(uuid())
+  title      String
+  inviteLink String        @unique
+  createdBy  String
+  creator    User          @relation(fields: [createdBy], references: [id])
+  createdAt  DateTime      @default(now())
+  members    GroupMember[]
+  expenses   Expense[]
+  settlements Settlement[]
+  media      Media[]
+}
+
+model GroupMember {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  groupId  String
+  group    Group    @relation(fields: [groupId], references: [id])
+  joinedAt DateTime @default(now())
+}
+
+model Expense {
+  id      String         @id @default(uuid())
+  title   String
+  amount  Float
+  groupId String
+  group   Group          @relation(fields: [groupId], references: [id])
+  paidBy  String
+  payer   User           @relation(fields: [paidBy], references: [id])
+  date    DateTime       @default(now())
+  splits  ExpenseSplit[]
+}
+
+model ExpenseSplit {
+  id        String  @id @default(uuid())
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  amount    Float
+}
+
+model Settlement {
+  id         String    @id @default(uuid())
+  fromUserId String
+  toUserId   String
+  groupId    String
+  group      Group     @relation(fields: [groupId], references: [id])
+  amount     Float
+  isPaid     Boolean   @default(false)
+  paidAt     DateTime?
+}
+
+model Media {
+  id         String   @id @default(uuid())
+  fileURL    String
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id])
+  uploadedBy String
+  createdAt  DateTime @default(now())
+}
