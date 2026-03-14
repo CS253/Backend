@@ -4,7 +4,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
-const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
@@ -14,7 +13,6 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(cookieParser());
-app.use("/api/auth", authRoutes);
 
 // Basic Route
 app.get('/', (req, res) => {
