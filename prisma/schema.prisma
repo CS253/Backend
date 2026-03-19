@@ -17,10 +17,11 @@ model User {
   name         String?
   upiId        String?
   createdAt    DateTime      @default(now())
-  groups       GroupMember[]
+  groups        GroupMember[]
   createdGroups Group[]
-  expensesPaid Expense[]
-  splits       ExpenseSplit[]
+  expensesPaid  Expense[]
+  splits        ExpenseSplit[]
+  uploadedMedia Media[]       @relation("UploadedMedia")
 }
 
 model Group {
@@ -43,6 +44,8 @@ model GroupMember {
   groupId  String
   group    Group    @relation(fields: [groupId], references: [id])
   joinedAt DateTime @default(now())
+
+  @@unique([userId, groupId])
 }
 
 model Expense {
@@ -78,10 +81,19 @@ model Settlement {
 }
 
 model Media {
-  id         String   @id @default(uuid())
-  fileURL    String
-  groupId    String
-  group      Group    @relation(fields: [groupId], references: [id])
-  uploadedBy String
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  title        String?
+  fileName     String
+  fileUrl      String
+  filePath     String
+  mimeType     String
+  mediaType    String
+  sizeBytes    Int
+  groupId      String
+  group        Group    @relation(fields: [groupId], references: [id])
+  uploadedBy   String
+  uploader     User     @relation("UploadedMedia", fields: [uploadedBy], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([groupId, mediaType, createdAt])
 }
