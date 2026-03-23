@@ -29,6 +29,8 @@ model Group {
   title      String
   inviteLink String        @unique
   createdBy  String
+  photoUrl   String?
+  photoPath  String?
   creator    User          @relation(fields: [createdBy], references: [id])
   createdAt  DateTime      @default(now())
   members    GroupMember[]
