@@ -124,17 +124,21 @@ async function getGroupHistory(groupId, filters = {}) {
     notes: expense.notes,
   }));
 
-  // Sort by createdAt descending (latest created first), then by type (expenses before reimbursements)
+  // Sort by date descending (latest transaction first), then by createdAt within same date
   history.sort((a, b) => {
-    // Primary: Sort by createdAt descending (when it was added to system - latest first)
+    // Primary: Sort by date descending (transaction date - latest first)
+    const dateComparison = new Date(b.date) - new Date(a.date);
+    if (dateComparison !== 0) return dateComparison;
+    
+    // Secondary: Within same transaction date, show newest created first
     const createdComparison = new Date(b.createdAt) - new Date(a.createdAt);
     if (createdComparison !== 0) return createdComparison;
     
-    // Secondary: Within same createdAt time, show expenses before reimbursements
+    // Tertiary: Within same date and createdAt, show expenses before reimbursements
     if (a.type !== b.type) {
       return a.type === 'EXPENSE' ? -1 : 1; // EXPENSE comes first (-1), REIMBURSEMENT comes later (1)
     }
-    
+
     return 0;
   });
 

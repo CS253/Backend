@@ -281,4 +281,70 @@ router.post('/groups/:groupId/members', async (req, res) => {
   }
 });
 
+/**
+ * PUT /groups/:groupId
+ * Update group details (title, currency)
+ */
+router.put('/groups/:groupId', async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { title, currency } = req.body;
+
+    // At least one field must be provided
+    if (!title && !currency) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one of title or currency is required',
+      });
+    }
+
+    // Check if group exists
+    const group = await prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        error: 'Group not found',
+      });
+    }
+
+    // Prepare update data
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (currency) updateData.currency = currency;
+
+    // Update group
+    const updatedGroup = await prisma.group.update({
+      where: { id: groupId },
+      data: updateData,
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: updatedGroup,
+      message: 'Group updated successfully',
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

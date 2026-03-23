@@ -165,7 +165,7 @@ async function getGroupExpenses(groupId, filters = {}) {
         select: { id: true, name: true, email: true },
       },
     },
-    orderBy: { date: 'desc' },
+    orderBy: { date: 'desc' }, // Sort by transaction date descending (latest first)
   });
 
   return expenses;

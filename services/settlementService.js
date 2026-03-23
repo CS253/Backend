@@ -1,5 +1,4 @@
 const { PrismaClient } = require('@prisma/client');
-const { simplifyDebtsPreservingPairsDinic } = require('./debtSimplification');
 const prisma = new PrismaClient();
 
 /**
@@ -127,11 +126,16 @@ async function getGroupBalances(groupId) {
  * @param {Object} balances - Current balances {currency: {userId: {paid, owed, balance}}}
  * @returns {Array} Array of settlement transactions
  */
+/**
+ * Simple Netting Algorithm (when simplifyDebts=false)
+ * Just nets bidirectional flows between each pair of nodes
+ * A→B 20, B→A 100 becomes B→A 80
+ * Returns all remaining edges after netting
+ */
 async function preservePairsDinicsAlgorithm(groupId, balances) {
   const settlements = [];
 
-  // Fetch actual expenses to extract original debtor-creditor pairs
-  // This now includes reimbursements (which are created as expenses)
+  // Fetch all expenses
   const expenses = await prisma.expense.findMany({
     where: { groupId },
     include: { splits: true },
@@ -139,46 +143,82 @@ async function preservePairsDinicsAlgorithm(groupId, balances) {
 
   // Process each currency separately
   Object.keys(balances).forEach((currency) => {
-    const transactions = [];
-    const allowedPairs = new Set();
-
-    // Extract all debtor->creditor pairs from original expenses
+    // Build debt graph: Map<debtor, Map<creditor, amount>>
+    const debtGraph = new Map();
+    
     expenses.forEach((expense) => {
       if (expense.currency !== currency) return;
 
       const payer = expense.paidBy;
       expense.splits.forEach((split) => {
         if (split.userId !== payer) {
-          // This person owes the payer
-          const pairKey = `${split.userId}->${payer}`;
-          allowedPairs.add(pairKey);
-          transactions.push({
-            from: split.userId,
-            to: payer,
-            amount: split.amount,
-          });
+          const debtor = split.userId;
+          const creditor = payer;
+          const amount = split.amount;
+
+          if (!debtGraph.has(debtor)) {
+            debtGraph.set(debtor, new Map());
+          }
+          const current = debtGraph.get(debtor).get(creditor) || 0;
+          debtGraph.get(debtor).set(creditor, current + amount);
         }
       });
     });
 
-    if (transactions.length === 0) return;
+    if (debtGraph.size === 0) return;
 
-    // Use the new preserve-pairs Dinics algorithm
-    const simplified = simplifyDebtsPreservingPairsDinic(transactions, { allowedPairs });
+    // NET bidirectional debts: A→B 20 + B→A 100 = B→A 80
+    netBidirectionalDebts(debtGraph);
 
-    // Convert to settlement format
-    simplified.forEach((tx) => {
-      settlements.push({
-        fromUserId: tx.from,
-        toUserId: tx.to,
-        amount: tx.amount,
-        currency,
-        isPaid: false,
-      });
-    });
+    // Convert all remaining edges to settlement format
+    for (const [debtor, creditorMap] of debtGraph) {
+      for (const [creditor, amount] of creditorMap) {
+        if (amount > 0.01) {
+          settlements.push({
+            fromUserId: debtor,
+            toUserId: creditor,
+            amount: Math.round(amount * 100) / 100,
+            currency,
+            isPaid: false,
+          });
+        }
+      }
+    }
   });
 
   return settlements;
+}
+
+/**
+ * NET bidirectional debts between all pairs
+ * If A→B=20 and B→A=100, result is B→A=80
+ */
+function netBidirectionalDebts(debtGraph) {
+  const processed = new Set();
+  
+  for (const [person1, creditorMap] of debtGraph) {
+    for (const [person2, amount1] of creditorMap) {
+      const pairKey = [person1, person2].sort().join('|');
+      if (processed.has(pairKey)) continue;
+      
+      if (debtGraph.has(person2) && debtGraph.get(person2).has(person1)) {
+        const amount2 = debtGraph.get(person2).get(person1);
+        
+        if (amount1 > amount2) {
+          debtGraph.get(person1).set(person2, amount1 - amount2);
+          debtGraph.get(person2).delete(person1);
+        } else if (amount2 > amount1) {
+          debtGraph.get(person2).set(person1, amount2 - amount1);
+          debtGraph.get(person1).delete(person2);
+        } else {
+          debtGraph.get(person1).delete(person2);
+          debtGraph.get(person2).delete(person1);
+        }
+      }
+      
+      processed.add(pairKey);
+    }
+  }
 }
 
 /**
