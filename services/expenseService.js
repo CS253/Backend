@@ -201,6 +201,136 @@ async function getExpense(expenseId) {
 }
 
 /**
+ * Update an expense and its splits
+ * @param {string} expenseId - Expense ID
+ * @param {Object} data - Update data (same fields as createExpense)
+ * @returns {Object} Updated expense with splits
+ */
+async function updateExpense(expenseId, data) {
+  const { title, amount, paidBy, currency, split, notes, date, groupId } = data;
+
+  // Get existing expense
+  const existingExpense = await prisma.expense.findUnique({
+    where: { id: expenseId },
+    include: { splits: true },
+  });
+
+  if (!existingExpense) {
+    throw new Error(`Expense with ID ${expenseId} not found`);
+  }
+
+  // Fetch group for validation
+  const group = await prisma.group.findUnique({
+    where: { id: existingExpense.groupId },
+    include: { members: true },
+  });
+
+  if (!group) {
+    throw new Error(`Group with ID ${existingExpense.groupId} not found`);
+  }
+
+  // Use provided groupId or existing one
+  const targetGroupId = groupId || existingExpense.groupId;
+
+  // Use provided values or keep existing ones
+  const updatedTitle = title !== undefined ? title : existingExpense.title;
+  const updatedAmount = amount !== undefined ? amount : existingExpense.amount;
+  const updatedPaidBy = paidBy !== undefined ? paidBy : existingExpense.paidBy;
+  const updatedCurrency = currency !== undefined ? currency : existingExpense.currency;
+  const updatedNotes = notes !== undefined ? notes : existingExpense.notes;
+  const updatedDate = date !== undefined ? new Date(date) : existingExpense.date;
+  const updatedSplit = split !== undefined ? split : { type: existingExpense.splitType, participants: existingExpense.splits.map(s => s.userId) };
+
+  // Validate split configuration
+  if (!updatedSplit || !updatedSplit.type) {
+    throw new Error('Split configuration required with type (EQUAL or CUSTOM)');
+  }
+
+  // Calculate new splits based on type
+  let participants = [];
+  let splitAmounts = {};
+
+  if (updatedSplit.type === 'EQUAL') {
+    if (updatedSplit.participants && updatedSplit.participants.length > 0) {
+      participants = updatedSplit.participants;
+    } else {
+      participants = group.members.map((m) => m.userId);
+      if (!participants.includes(updatedPaidBy)) {
+        participants.push(updatedPaidBy);
+      }
+    }
+    
+    const perPersonAmount = updatedAmount / participants.length;
+    participants.forEach((userId) => {
+      splitAmounts[userId] = parseFloat(perPersonAmount.toFixed(2));
+    });
+  } else if (updatedSplit.type === 'CUSTOM') {
+    if (!updatedSplit.splits || updatedSplit.splits.length === 0) {
+      throw new Error('CUSTOM split requires splits array with {userId, amount} objects');
+    }
+
+    const customSum = updatedSplit.splits.reduce((sum, item) => sum + item.amount, 0);
+    const difference = Math.abs(customSum - updatedAmount);
+
+    if (difference > 0.01) {
+      throw new Error(`Custom amounts sum (${customSum}) does not match total amount (${updatedAmount})`);
+    }
+
+    participants = updatedSplit.splits.map((item) => item.userId);
+    updatedSplit.splits.forEach((item) => {
+      splitAmounts[item.userId] = parseFloat(item.amount.toFixed(2));
+    });
+  } else {
+    throw new Error(`Invalid split type: ${updatedSplit.type}. Must be EQUAL or CUSTOM`);
+  }
+
+  // Validate all participants are group members
+  const groupMemberIds = group.members.map((m) => m.userId);
+  for (const participantId of participants) {
+    if (!groupMemberIds.includes(participantId)) {
+      throw new Error(`User ${participantId} is not a member of group ${existingExpense.groupId}`);
+    }
+  }
+
+  // Update expense record
+  const updatedExpense = await prisma.expense.update({
+    where: { id: expenseId },
+    data: {
+      title: updatedTitle,
+      amount: parseFloat(updatedAmount.toFixed(2)),
+      currency: updatedCurrency,
+      paidBy: updatedPaidBy,
+      date: updatedDate,
+      notes: updatedNotes,
+      splitType: updatedSplit.type,
+    },
+  });
+
+  // Delete old splits
+  await prisma.expenseSplit.deleteMany({
+    where: { expenseId },
+  });
+
+  // Create new splits
+  const splits = [];
+  for (const [userId, splitAmount] of Object.entries(splitAmounts)) {
+    const splitRecord = await prisma.expenseSplit.create({
+      data: {
+        expenseId: updatedExpense.id,
+        userId,
+        amount: splitAmount,
+      },
+    });
+    splits.push(splitRecord);
+  }
+
+  return {
+    ...updatedExpense,
+    splits,
+  };
+}
+
+/**
  * Delete an expense and its splits
  * @param {string} expenseId - Expense ID
  * @returns {Object} Deleted expense
@@ -223,5 +353,6 @@ module.exports = {
   createExpense,
   getGroupExpenses,
   getExpense,
+  updateExpense,
   deleteExpense,
 };

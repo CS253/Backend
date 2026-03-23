@@ -90,6 +90,39 @@ router.get('/groups/:groupId/expenses/:expenseId', async (req, res) => {
 });
 
 /**
+ * PUT /groups/:groupId/expenses/:expenseId
+ * Update an expense and its splits
+ */
+router.put('/groups/:groupId/expenses/:expenseId', async (req, res) => {
+  try {
+    const { groupId, expenseId } = req.params;
+    const { title, amount, paidBy, currency, split, notes, date } = req.body;
+
+    const updatedExpense = await expenseService.updateExpense(expenseId, {
+      groupId,
+      title,
+      amount: amount !== undefined ? parseFloat(amount) : undefined,
+      paidBy,
+      currency,
+      split,
+      notes,
+      date,
+    });
+
+    res.json({
+      success: true,
+      data: updatedExpense,
+      message: 'Expense updated successfully',
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * DELETE /groups/:groupId/expenses/:expenseId
  * Delete an expense and its splits
  */
