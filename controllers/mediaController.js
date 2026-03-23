@@ -14,6 +14,7 @@ exports.listMedia = async (req, res) => {
       userId: req.userId,
       groupId: req.query.groupId,
       mediaType: req.mediaTypeFilter || req.query.type || req.query.mediaType,
+      responseVariant: req.mediaTypeFilter || "media",
       page,
       limit
     });
@@ -30,6 +31,7 @@ exports.uploadMedia = async (req, res) => {
       userId: req.userId,
       groupId: req.body.groupId,
       requestedType: req.mediaTypeFilter || req.body.type || req.body.mediaType,
+      responseVariant: req.mediaTypeFilter || "media",
       files: req.files || [],
       titles: req.body.titles,
       title: req.body.title

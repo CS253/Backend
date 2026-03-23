@@ -91,6 +91,59 @@ function buildPublicUrl(storedFilePath) {
   return `${getAppBaseUrl()}/${storedFilePath.replace(/^\/+/, "")}`;
 }
 
+function buildBaseMediaPayload(item) {
+  return {
+    id: item.id,
+    title: item.title || item.fileName,
+    fileName: item.fileName,
+    fileUrl: item.fileUrl,
+    mimeType: item.mimeType,
+    mediaType: item.mediaType,
+    sizeBytes: item.sizeBytes,
+    groupId: item.groupId,
+    createdAt: item.createdAt,
+    authorName: item.uploader.name || "Unknown",
+    uploadedBy: {
+      id: item.uploader.id,
+      name: item.uploader.name || "Unknown"
+    }
+  };
+}
+
+function buildPhotoPayload(item) {
+  return {
+    ...buildBaseMediaPayload(item),
+    imageUrl: item.fileUrl
+  };
+}
+
+function buildDocumentPayload(item) {
+  const extension = path.extname(item.fileName || "").replace(".", "").toLowerCase();
+
+  return {
+    ...buildBaseMediaPayload(item),
+    documentUrl: item.fileUrl,
+    downloadUrl: item.fileUrl,
+    extension
+  };
+}
+
+function serializeMedia(item, responseVariant) {
+  if (responseVariant === "photo") {
+    return buildPhotoPayload(item);
+  }
+
+  if (responseVariant === "document") {
+    return buildDocumentPayload(item);
+  }
+
+  return {
+    ...buildBaseMediaPayload(item),
+    imageUrl: item.mediaType === "photo" ? item.fileUrl : undefined,
+    documentUrl: item.mediaType === "document" ? item.fileUrl : undefined
+  };
+}
+
 async function ensureGroupMembership(userId, groupId) {
   if (!groupId) {
     throw new AppError(400, "groupId is required");
@@ -146,7 +199,7 @@ async function removeStoredObject(storagePath) {
   }
 }
 
-exports.listMedia = async ({ userId, groupId, mediaType, page, limit }) => {
+exports.listMedia = async ({ userId, groupId, mediaType, responseVariant, page, limit }) => {
   await ensureGroupMembership(userId, groupId);
 
   const where = {
@@ -178,24 +231,7 @@ exports.listMedia = async ({ userId, groupId, mediaType, page, limit }) => {
   ]);
 
   return {
-    data: items.map((item) => ({
-      id: item.id,
-      title: item.title || item.fileName,
-      fileName: item.fileName,
-      imageUrl: item.fileUrl,
-      fileUrl: item.fileUrl,
-      filePath: item.filePath,
-      mimeType: item.mimeType,
-      mediaType: item.mediaType,
-      sizeBytes: item.sizeBytes,
-      groupId: item.groupId,
-      createdAt: item.createdAt,
-      authorName: item.uploader.name || "Unknown",
-      uploadedBy: {
-        id: item.uploader.id,
-        name: item.uploader.name || "Unknown"
-      }
-    })),
+    data: items.map((item) => serializeMedia(item, responseVariant)),
     meta: {
       page,
       limit,
@@ -204,7 +240,7 @@ exports.listMedia = async ({ userId, groupId, mediaType, page, limit }) => {
   };
 };
 
-exports.uploadMedia = async ({ userId, groupId, requestedType, files, titles, title }) => {
+exports.uploadMedia = async ({ userId, groupId, requestedType, responseVariant, files, titles, title }) => {
   await ensureGroupMembership(userId, groupId);
 
   if (!files || files.length === 0) {
@@ -294,19 +330,7 @@ exports.uploadMedia = async ({ userId, groupId, requestedType, files, titles, ti
 
   return {
     message: "Media uploaded successfully",
-    data: createdMedia.map((item) => ({
-      id: item.id,
-      title: item.title || item.fileName,
-      fileName: item.fileName,
-      imageUrl: item.fileUrl,
-      fileUrl: item.fileUrl,
-      mimeType: item.mimeType,
-      mediaType: item.mediaType,
-      sizeBytes: item.sizeBytes,
-      groupId: item.groupId,
-      createdAt: item.createdAt,
-      authorName: item.uploader.name || "Unknown"
-    }))
+    data: createdMedia.map((item) => serializeMedia(item, responseVariant))
   };
 };
 
