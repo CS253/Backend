@@ -11,16 +11,23 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  passwordHash String
-  name         String?
-  upiId        String?
-  createdAt    DateTime      @default(now())
-  groups       GroupMember[]
-  createdGroups Group[]
-  expensesPaid Expense[]
-  splits       ExpenseSplit[]
+  id                      String        @id @default(uuid())
+  email                   String        @unique
+  passwordHash            String
+  name                    String?
+  upiId                   String?
+  phone                   String?
+  address                 String?
+  imageUrl                String?
+  notificationsEnabled    Boolean       @default(true)
+  createdAt               DateTime      @default(now())
+  groups                  GroupMember[]
+  createdGroups           Group[]
+  expensesPaid            Expense[]     @relation("ExpensesPaid")
+  splits                  ExpenseSplit[]
+  settlementsFrom         Settlement[]  @relation("SettlementFromUser")
+  settlementsTo           Settlement[]  @relation("SettlementToUser")
+  settlementConfirmations Settlement[]  @relation("SettlementConfirmedBy")
 }
 
 model Group {
@@ -43,6 +50,8 @@ model GroupMember {
   groupId  String
   group    Group    @relation(fields: [groupId], references: [id])
   joinedAt DateTime @default(now())
+
+  @@unique([userId, groupId])
 }
 
 model Expense {
@@ -52,7 +61,7 @@ model Expense {
   groupId String
   group   Group          @relation(fields: [groupId], references: [id])
   paidBy  String
-  payer   User           @relation(fields: [paidBy], references: [id])
+  payer   User           @relation("ExpensesPaid", fields: [paidBy], references: [id])
   date    DateTime       @default(now())
   splits  ExpenseSplit[]
 }
@@ -64,17 +73,33 @@ model ExpenseSplit {
   userId    String
   user      User    @relation(fields: [userId], references: [id])
   amount    Float
+
+  @@index([expenseId, userId])
 }
 
 model Settlement {
-  id         String    @id @default(uuid())
-  fromUserId String
-  toUserId   String
-  groupId    String
-  group      Group     @relation(fields: [groupId], references: [id])
-  amount     Float
-  isPaid     Boolean   @default(false)
-  paidAt     DateTime?
+  id              String            @id @default(uuid())
+  fromUserId      String
+  fromUser        User              @relation("SettlementFromUser", fields: [fromUserId], references: [id])
+  toUserId        String
+  toUser          User              @relation("SettlementToUser", fields: [toUserId], references: [id])
+  groupId         String
+  group           Group             @relation(fields: [groupId], references: [id])
+  amount          Float
+  method          SettlementMethod  @default(MANUAL)
+  status          SettlementStatus  @default(PENDING)
+  transactionId   String?
+  notes           String?
+  upiUrl          String?
+  initiatedAt     DateTime          @default(now())
+  paidAt          DateTime?
+  confirmedAt     DateTime?
+  confirmedBy     String?
+  confirmedByUser User?             @relation("SettlementConfirmedBy", fields: [confirmedBy], references: [id])
+  isPaid          Boolean           @default(false)
+
+  @@index([groupId, status])
+  @@index([fromUserId, toUserId, groupId])
 }
 
 model Media {
@@ -84,4 +109,15 @@ model Media {
   group      Group    @relation(fields: [groupId], references: [id])
   uploadedBy String
   createdAt  DateTime @default(now())
+}
+
+enum SettlementMethod {
+  UPI
+  MANUAL
+}
+
+enum SettlementStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
 }

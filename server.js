@@ -5,6 +5,8 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 const authRoutes = require("./routes/authRoutes");
+const userRoutes = require("./routes/userRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const app = express();
 
@@ -15,6 +17,8 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(cookieParser());
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // Basic Route
 app.get('/', (req, res) => {
