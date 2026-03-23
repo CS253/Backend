@@ -5,6 +5,10 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
+const expenseRoutes = require('./routes/expenseRoutes');
+const userRoutes = require('./routes/userRoutes');
+const settlementRoutes = require('./routes/settlementRoutes');
+
 const app = express();
 
 // Middleware
@@ -13,6 +17,11 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(cookieParser());
+
+// Routes
+app.use('/api', expenseRoutes);
+app.use('/api', userRoutes);
+app.use('/api', settlementRoutes);
 
 // Basic Route
 app.get('/', (req, res) => {

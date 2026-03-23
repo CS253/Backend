@@ -11,29 +11,32 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  passwordHash String
-  name         String?
-  upiId        String?
-  createdAt    DateTime      @default(now())
-  groups       GroupMember[]
-  createdGroups Group[]
-  expensesPaid Expense[]
-  splits       ExpenseSplit[]
+  id              String        @id @default(uuid())
+  email           String        @unique
+  passwordHash    String
+  name            String?
+  upiId           String?
+  createdAt       DateTime      @default(now())
+  groups          GroupMember[]
+  createdGroups   Group[]
+  expensesPaid    Expense[]
+  splits          ExpenseSplit[]
 }
 
 model Group {
-  id         String        @id @default(uuid())
-  title      String
-  inviteLink String        @unique
-  createdBy  String
-  creator    User          @relation(fields: [createdBy], references: [id])
-  createdAt  DateTime      @default(now())
-  members    GroupMember[]
-  expenses   Expense[]
-  settlements Settlement[]
-  media      Media[]
+  id              String        @id @default(uuid())
+  title           String
+  inviteLink      String        @unique
+  createdBy       String
+  creator         User          @relation(fields: [createdBy], references: [id])
+  currency        String        // Set from mobile device location at group creation
+  simplifyDebts   Boolean       @default(false) // If true, use greedy algorithm; if false, use Dinics (preserves relationships)
+  createdAt       DateTime      @default(now())
+  members         GroupMember[]
+  expenses        Expense[]
+  settlements     Settlement[]
+  transactions    Transaction[]
+  media           Media[]
 }
 
 model GroupMember {
@@ -46,15 +49,19 @@ model GroupMember {
 }
 
 model Expense {
-  id      String         @id @default(uuid())
-  title   String
-  amount  Float
-  groupId String
-  group   Group          @relation(fields: [groupId], references: [id])
-  paidBy  String
-  payer   User           @relation(fields: [paidBy], references: [id])
-  date    DateTime       @default(now())
-  splits  ExpenseSplit[]
+  id         String         @id @default(uuid())
+  title      String
+  amount     Float
+  currency   String         @default("USD")
+  groupId    String
+  group      Group          @relation(fields: [groupId], references: [id])
+  paidBy     String
+  payer      User           @relation(fields: [paidBy], references: [id])
+  date       DateTime       @default(now())
+  notes      String?
+  splitType  String         @default("EQUAL")
+  splits     ExpenseSplit[]
+  createdAt  DateTime       @default(now())
 }
 
 model ExpenseSplit {
@@ -73,8 +80,23 @@ model Settlement {
   groupId    String
   group      Group     @relation(fields: [groupId], references: [id])
   amount     Float
+  currency   String    @default("USD")
   isPaid     Boolean   @default(false)
   paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Transaction {
+  id         String    @id @default(uuid())
+  type       String    // "EXPENSE" or "REIMBURSEMENT"
+  groupId    String
+  group      Group     @relation(fields: [groupId], references: [id])
+  fromUserId String?   // null for expenses, set for reimbursements
+  toUserId   String?   // null for expenses, set for reimbursements
+  amount     Float
+  currency   String    @default("USD")
+  date       DateTime  @default(now())
+  createdAt  DateTime  @default(now())
 }
 
 model Media {
