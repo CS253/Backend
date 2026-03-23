@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
+const groupService = require('../services/groupService');
 
 const prisma = new PrismaClient();
 
@@ -105,48 +106,37 @@ router.get('/users/:userId', async (req, res) => {
 
 /**
  * POST /groups
- * Create a new group
+ * Create a new group with optional pre-added participants
+ * FR-5: Auto-detect currency from IP, allow pre-added participants
  */
 router.post('/groups', async (req, res) => {
   try {
-    const { title, currency, createdBy } = req.body;
+    const { title, createdBy, preAddedParticipants, currency } = req.body;
 
-    if (!title || !currency || !createdBy) {
+    if (!title || !createdBy) {
       return res.status(400).json({
         success: false,
-        error: 'Title, currency, and createdBy are required',
+        error: 'Title and createdBy are required',
       });
     }
 
-    // Generate unique invite link
-    const inviteLink = 'invite-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    // Get client IP for currency auto-detection
+    const clientIp = req.ip || req.connection.remoteAddress || '';
 
-    // Create group
-    const group = await prisma.group.create({
-      data: {
+    // Create group using groupService
+    const group = await groupService.createGroupWithParticipants(
+      {
         title,
-        currency,
         createdBy,
-        inviteLink,
+        preAddedParticipants: preAddedParticipants || [],
+        currency,
       },
-    });
-
-    // Add creator to group
-    await prisma.groupMember.create({
-      data: {
-        userId: createdBy,
-        groupId: group.id,
-      },
-    });
+      clientIp
+    );
 
     res.status(201).json({
       success: true,
-      data: {
-        groupId: group.id,
-        title: group.title,
-        currency: group.currency,
-        inviteLink: group.inviteLink,
-      },
+      data: group,
       message: 'Group created successfully',
     });
   } catch (error) {
@@ -340,6 +330,102 @@ router.put('/groups/:groupId', async (req, res) => {
       message: 'Group updated successfully',
     });
   } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /groups/join
+ * Join an existing group using invite link
+ * FR-6: Allow users to join groups via invite link and select/claim a participant name
+ */
+router.post('/groups/join', async (req, res) => {
+  try {
+    const { inviteLink, participantName, userId } = req.body;
+
+    if (!inviteLink || !participantName || !userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invite link, participant name, and user ID are required',
+      });
+    }
+
+    // Join group using groupService
+    const result = await groupService.joinGroupByInviteLink(
+      inviteLink,
+      userId,
+      participantName
+    );
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      message: 'Successfully joined group',
+    });
+  } catch (error) {
+    // Return appropriate status codes based on error message
+    if (error.message.includes('Invite link expired')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invite link expired',
+      });
+    }
+    if (error.message.includes('already a member')) {
+      return res.status(400).json({
+        success: false,
+        error: error.message,
+      });
+    }
+    if (error.message.includes('already joined')) {
+      return res.status(400).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * DELETE /groups/:groupId
+ * Delete a group permanently (hard delete)
+ * FR-7: Require confirmation before deleting group and revoke invite link
+ */
+router.delete('/groups/:groupId', async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { confirmation } = req.body;
+
+    if (confirmation !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'Confirmation required to delete group. Send confirmation: true',
+      });
+    }
+
+    // Delete group using groupService (hard delete with cascade)
+    const result = await groupService.deleteGroup(groupId, confirmation);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'Group deleted permanently',
+    });
+  } catch (error) {
+    if (error.message.includes('not found')) {
+      return res.status(404).json({
+        success: false,
+        error: 'Group not found',
+      });
+    }
+
     res.status(400).json({
       success: false,
       error: error.message,

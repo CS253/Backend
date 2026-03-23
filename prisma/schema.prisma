@@ -24,19 +24,21 @@ model User {
 }
 
 model Group {
-  id              String        @id @default(uuid())
-  title           String
-  inviteLink      String        @unique
-  createdBy       String
-  creator         User          @relation(fields: [createdBy], references: [id])
-  currency        String        // Set from mobile device location at group creation
-  simplifyDebts   Boolean       @default(false) // If true, use greedy algorithm; if false, use Dinics (preserves relationships)
-  createdAt       DateTime      @default(now())
-  members         GroupMember[]
-  expenses        Expense[]
-  settlements     Settlement[]
-  transactions    Transaction[]
-  media           Media[]
+  id                      String        @id @default(uuid())
+  title                   String
+  inviteLink              String        @unique
+  inviteLinkStatus        String        @default("ACTIVE")  // ACTIVE or REVOKED
+  createdBy               String
+  creator                 User          @relation(fields: [createdBy], references: [id])
+  currency                String        // Auto-detected from IP, user-overrideable, defaults to INR
+  preAddedParticipants    Json          @default("[]")      // Array of participant names ["Alice", "Bob"]
+  simplifyDebts           Boolean       @default(false)     // If true, use greedy algorithm; if false, use netting (preserves relationships)
+  createdAt               DateTime      @default(now())
+  members                 GroupMember[]
+  expenses                Expense[]
+  settlements             Settlement[]
+  transactions            Transaction[]
+  media                   Media[]
 }
 
 model GroupMember {
@@ -44,7 +46,7 @@ model GroupMember {
   userId   String
   user     User     @relation(fields: [userId], references: [id])
   groupId  String
-  group    Group    @relation(fields: [groupId], references: [id])
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   joinedAt DateTime @default(now())
 }
 
@@ -54,7 +56,7 @@ model Expense {
   amount     Float
   currency   String         @default("USD")
   groupId    String
-  group      Group          @relation(fields: [groupId], references: [id])
+  group      Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
   paidBy     String
   payer      User           @relation(fields: [paidBy], references: [id])
   date       DateTime       @default(now())
@@ -67,7 +69,7 @@ model Expense {
 model ExpenseSplit {
   id        String  @id @default(uuid())
   expenseId String
-  expense   Expense @relation(fields: [expenseId], references: [id])
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   userId    String
   user      User    @relation(fields: [userId], references: [id])
   amount    Float
@@ -78,7 +80,7 @@ model Settlement {
   fromUserId String
   toUserId   String
   groupId    String
-  group      Group     @relation(fields: [groupId], references: [id])
+  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   amount     Float
   currency   String    @default("USD")
   isPaid     Boolean   @default(false)
@@ -90,7 +92,7 @@ model Transaction {
   id         String    @id @default(uuid())
   type       String    // "EXPENSE" or "REIMBURSEMENT"
   groupId    String
-  group      Group     @relation(fields: [groupId], references: [id])
+  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   fromUserId String?   // null for expenses, set for reimbursements
   toUserId   String?   // null for expenses, set for reimbursements
   amount     Float
@@ -103,7 +105,7 @@ model Media {
   id         String   @id @default(uuid())
   fileURL    String
   groupId    String
-  group      Group    @relation(fields: [groupId], references: [id])
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   uploadedBy String
   createdAt  DateTime @default(now())
 }
