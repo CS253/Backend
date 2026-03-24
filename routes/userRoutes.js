@@ -3,6 +3,7 @@ const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const groupService = require('../services/groupService');
+const { admin } = require('../services/firebaseAdmin');
 
 const prisma = new PrismaClient();
 
@@ -60,6 +61,64 @@ router.post('/users', async (req, res) => {
     res.status(400).json({
       success: false,
       error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /users/sync
+ * Sync Firebase user with Neon DB
+ */
+router.post('/users/sync', async (req, res) => {
+  console.log('DEBUG: Received sync request');
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      console.log('DEBUG: ID token is missing');
+      return res.status(400).json({
+        success: false,
+        error: 'ID token is required',
+      });
+    }
+
+    // Verify Firebase token
+    console.log('DEBUG: Verifying Firebase token...');
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name, picture } = decodedToken;
+    console.log(`DEBUG: Token verified for UID: ${uid}, Email: ${email}`);
+
+    // Upsert user in Neon DB
+    console.log('DEBUG: Upserting user in database...');
+    const user = await prisma.user.upsert({
+      where: { firebaseUid: uid },
+      update: {
+        email: email || undefined,
+        name: name || undefined,
+      },
+      create: {
+        firebaseUid: uid,
+        email: email,
+        name: name || null,
+      },
+    });
+    console.log('DEBUG: User upserted successfully:', user.id);
+
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        firebaseUid: user.firebaseUid,
+        email: user.email,
+        name: user.name,
+      },
+      message: 'User synced successfully',
+    });
+  } catch (error) {
+    console.error('DEBUG: Sync Error:', error.message);
+    res.status(401).json({
+      success: false,
+      error: error.message || 'Invalid or expired token',
     });
   }
 });

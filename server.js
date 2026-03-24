@@ -4,6 +4,10 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
+const { initFirebase } = require('./services/firebaseAdmin');
+
+// Initialize Firebase Admin
+initFirebase();
 
 const expenseRoutes = require('./routes/expenseRoutes');
 const userRoutes = require('./routes/userRoutes');
