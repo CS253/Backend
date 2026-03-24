@@ -72,7 +72,7 @@ router.post('/users', async (req, res) => {
 router.post('/users/sync', async (req, res) => {
   console.log('DEBUG: Received sync request');
   try {
-    const { idToken } = req.body;
+    const { idToken, name: providedName, phoneNumber: providedPhone } = req.body;
 
     if (!idToken) {
       console.log('DEBUG: ID token is missing');
@@ -84,25 +84,83 @@ router.post('/users/sync', async (req, res) => {
 
     // Verify Firebase token
     console.log('DEBUG: Verifying Firebase token...');
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const { uid, email, name, picture } = decodedToken;
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+    } catch (tokenError) {
+      console.error('DEBUG: Token verification failed:', tokenError.message);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or expired token',
+      });
+    }
+
+    const { uid, email, name: tokenName } = decodedToken;
     console.log(`DEBUG: Token verified for UID: ${uid}, Email: ${email}`);
 
-    // Upsert user in Neon DB
-    console.log('DEBUG: Upserting user in database...');
-    const user = await prisma.user.upsert({
+    // Determine final name and phone (prefer provided, fallback to token)
+    const finalName = (providedName && providedName.trim() !== '') ? providedName.trim() : (tokenName || null);
+    const finalPhone = (providedPhone && providedPhone.trim() !== '') ? providedPhone.trim() : null;
+
+    console.log(`DEBUG: Target Data - Name: ${finalName}, Phone: ${finalPhone}`);
+
+    // Robust Sync Logic:
+    // 1. Try finding by firebaseUid
+    // 2. If not found, try finding by email
+    // 3. Update or Create accordingly
+    
+    let user;
+    
+    // Check by firebaseUid first
+    user = await prisma.user.findUnique({
       where: { firebaseUid: uid },
-      update: {
-        email: email || undefined,
-        name: name || undefined,
-      },
-      create: {
-        firebaseUid: uid,
-        email: email,
-        name: name || null,
-      },
     });
-    console.log('DEBUG: User upserted successfully:', user.id);
+
+    if (user) {
+      console.log('DEBUG: Existing user found by firebaseUid, updating...');
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          email: email || undefined,
+          name: finalName || undefined,
+          phoneNumber: finalPhone || undefined,
+        },
+      });
+    } else {
+      // Check by email if firebaseUid lookup failed
+      if (email) {
+        user = await prisma.user.findUnique({
+          where: { email: email },
+        });
+
+        if (user) {
+          console.log('DEBUG: Existing user found by email without UID, linking...');
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              firebaseUid: uid,
+              name: finalName || user.name || undefined,
+              phoneNumber: finalPhone || user.phoneNumber || undefined,
+            },
+          });
+        }
+      }
+
+      // If still not found, create new
+      if (!user) {
+        console.log('DEBUG: No existing user found, creating new one...');
+        user = await prisma.user.create({
+          data: {
+            firebaseUid: uid,
+            email: email,
+            name: finalName,
+            phoneNumber: finalPhone,
+          },
+        });
+      }
+    }
+
+    console.log('DEBUG: Sync completed successfully for user:', user.id);
 
     res.json({
       success: true,
@@ -111,6 +169,7 @@ router.post('/users/sync', async (req, res) => {
         firebaseUid: user.firebaseUid,
         email: user.email,
         name: user.name,
+        phoneNumber: user.phoneNumber,
       },
       message: 'User synced successfully',
     });
