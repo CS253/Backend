@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,12 +8,14 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  passwordHash String
-  name         String?
-  upiId        String?
-  createdAt    DateTime      @default(now())
+  id            String        @id @default(uuid())
+  firebaseUid   String?       @unique
+  email         String        @unique
+  passwordHash  String?
+  name          String?
+  phoneNumber   String?
+  upiId         String?
+  createdAt     DateTime      @default(now())
   groups        GroupMember[]
   createdGroups Group[]
   expensesPaid  Expense[]
@@ -25,18 +24,28 @@ model User {
 }
 
 model Group {
-  id         String        @id @default(uuid())
-  title      String
-  inviteLink String        @unique
-  createdBy  String
-  photoUrl   String?
-  photoPath  String?
-  creator    User          @relation(fields: [createdBy], references: [id])
-  createdAt  DateTime      @default(now())
-  members    GroupMember[]
-  expenses   Expense[]
-  settlements Settlement[]
-  media      Media[]
+  id                   String        @id @default(uuid())
+  title                String
+  destination          String        @default("")
+  startDate            DateTime      @default(now())
+  endDate              DateTime      @default(now())
+  tripType             String        @default("Other")
+  coverImage           String?
+  photoUrl             String?
+  photoPath            String?
+  inviteLink           String        @unique
+  inviteLinkStatus     String        @default("ACTIVE")
+  createdBy            String
+  creator              User          @relation(fields: [createdBy], references: [id])
+  currency             String
+  preAddedParticipants Json          @default("[]")
+  simplifyDebts        Boolean       @default(false)
+  createdAt            DateTime      @default(now())
+  members              GroupMember[]
+  expenses             Expense[]
+  settlements          Settlement[]
+  transactions         Transaction[]
+  media                Media[]
 }
 
 model GroupMember {
@@ -44,28 +53,32 @@ model GroupMember {
   userId   String
   user     User     @relation(fields: [userId], references: [id])
   groupId  String
-  group    Group    @relation(fields: [groupId], references: [id])
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   joinedAt DateTime @default(now())
 
   @@unique([userId, groupId])
 }
 
 model Expense {
-  id      String         @id @default(uuid())
-  title   String
-  amount  Float
-  groupId String
-  group   Group          @relation(fields: [groupId], references: [id])
-  paidBy  String
-  payer   User           @relation(fields: [paidBy], references: [id])
-  date    DateTime       @default(now())
-  splits  ExpenseSplit[]
+  id        String         @id @default(uuid())
+  title     String
+  amount    Float
+  currency  String         @default("USD")
+  groupId   String
+  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy    String
+  payer     User           @relation(fields: [paidBy], references: [id])
+  date      DateTime       @default(now())
+  notes     String?
+  splitType String         @default("EQUAL")
+  splits    ExpenseSplit[]
+  createdAt DateTime       @default(now())
 }
 
 model ExpenseSplit {
   id        String  @id @default(uuid())
   expenseId String
-  expense   Expense @relation(fields: [expenseId], references: [id])
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   userId    String
   user      User    @relation(fields: [userId], references: [id])
   amount    Float
@@ -76,26 +89,41 @@ model Settlement {
   fromUserId String
   toUserId   String
   groupId    String
-  group      Group     @relation(fields: [groupId], references: [id])
+  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   amount     Float
+  currency   String    @default("USD")
   isPaid     Boolean   @default(false)
   paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Transaction {
+  id         String    @id @default(uuid())
+  type       String
+  groupId    String
+  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  fromUserId String?
+  toUserId   String?
+  amount     Float
+  currency   String    @default("USD")
+  date       DateTime  @default(now())
+  createdAt  DateTime  @default(now())
 }
 
 model Media {
-  id           String   @id @default(uuid())
-  title        String?
-  fileName     String
-  fileUrl      String
-  filePath     String
-  mimeType     String
-  mediaType    String
-  sizeBytes    Int
-  groupId      String
-  group        Group    @relation(fields: [groupId], references: [id])
-  uploadedBy   String
-  uploader     User     @relation("UploadedMedia", fields: [uploadedBy], references: [id])
-  createdAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  title      String?
+  fileName   String
+  fileUrl    String
+  filePath   String
+  mimeType   String
+  mediaType  String
+  sizeBytes  Int
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  uploadedBy String
+  uploader   User     @relation("UploadedMedia", fields: [uploadedBy], references: [id])
+  createdAt  DateTime @default(now())
 
   @@index([groupId, mediaType, createdAt])
 }

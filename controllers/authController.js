@@ -2,11 +2,8 @@ const prisma = require("../utils/prismaClient");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-
-// REGISTER USER
 exports.register = async (req, res) => {
   try {
-
     const { email, password, name } = req.body;
 
     if (!email || !password) {
@@ -50,25 +47,16 @@ exports.register = async (req, res) => {
         name: user.name
       }
     });
-
   } catch (error) {
-
     console.error(error);
-
     res.status(500).json({
       error: "Server error"
     });
-
   }
 };
 
-
-
-// LOGIN USER
 exports.login = async (req, res) => {
-
   try {
-
     const { email, password } = req.body;
 
     const user = await prisma.user.findUnique({
@@ -81,10 +69,13 @@ exports.login = async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      user.passwordHash
-    );
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        error: "Password login is not available for this account"
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!isMatch) {
       return res.status(400).json({
@@ -107,15 +98,10 @@ exports.login = async (req, res) => {
         name: user.name
       }
     });
-
   } catch (error) {
-
     console.error(error);
-
     res.status(500).json({
       error: "Server error"
     });
-
   }
-
 };
