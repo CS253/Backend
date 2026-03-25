@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../utils/prismaClient');
+const { getGroupBalances } = require('./reportingService');
 
 /**
  * Calculate settlements for a group using the appropriate algorithm
@@ -49,64 +49,6 @@ async function calculateSettlements(groupId, forceSimplifyDebts = null) {
  * @param {string} groupId - Group ID
  * @returns {Object} Balances structure: {currency: {userId: {paid, owed, balance}}}
  */
-async function getGroupBalances(groupId) {
-  const group = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: { members: true },
-  });
-
-  if (!group) {
-    throw new Error(`Group with ID ${groupId} not found`);
-  }
-
-  // Get all expenses (including reimbursements which are now created as expenses)
-  const expenses = await prisma.expense.findMany({
-    where: { groupId },
-    include: { splits: true },
-  });
-
-  const memberIds = group.members.map((m) => m.userId);
-  const balances = {};
-
-  // Get all unique currencies used in the group
-  const currencies = new Set();
-  expenses.forEach((e) => currencies.add(e.currency));
-
-  // Initialize each currency with all members
-  currencies.forEach((currency) => {
-    balances[currency] = {};
-    memberIds.forEach((userId) => {
-      balances[currency][userId] = {
-        paid: 0,
-        owed: 0,
-        balance: 0,
-      };
-    });
-  });
-
-  // Process expenses (includes reimbursements since they're now expenses)
-  expenses.forEach((expense) => {
-    const currency = expense.currency;
-
-    // Add to payer's "paid" amount
-    balances[currency][expense.paidBy].paid += expense.amount;
-
-    // Add to each split participant's "owed" amount
-    expense.splits.forEach((split) => {
-      balances[currency][split.userId].owed += split.amount;
-    });
-  });
-
-  // Calculate final balance for each user per currency
-  Object.keys(balances).forEach((currency) => {
-    Object.keys(balances[currency]).forEach((userId) => {
-      balances[currency][userId].balance = balances[currency][userId].paid - balances[currency][userId].owed;
-    });
-  });
-
-  return balances;
-}
-
 /**
  * Preserve-Pairs Dinics Algorithm - Non-intrusive debt simplification
  * 

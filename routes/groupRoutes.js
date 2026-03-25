@@ -84,6 +84,7 @@ router.post("/", async (req, res) => {
   try {
     const {
       title,
+      name,
       preAddedParticipants,
       currency,
       destination,
@@ -93,7 +94,9 @@ router.post("/", async (req, res) => {
       coverImage,
     } = req.body;
 
-    if (!title) {
+    const resolvedTitle = title || name;
+
+    if (!resolvedTitle) {
       return res.status(400).json({
         success: false,
         error: "Title is required",
@@ -104,7 +107,7 @@ router.post("/", async (req, res) => {
 
     const group = await groupService.createGroupWithParticipants(
       {
-        title,
+        title: resolvedTitle,
         createdBy: req.userId,
         preAddedParticipants: preAddedParticipants || [],
         currency,
@@ -274,6 +277,7 @@ router.put("/:groupId", async (req, res) => {
     const { groupId } = req.params;
     const {
       title,
+      name,
       currency,
       destination,
       startDate,
@@ -282,8 +286,10 @@ router.put("/:groupId", async (req, res) => {
       coverImage,
     } = req.body;
 
+    const resolvedTitle = title ?? name;
+
     if (
-      !title &&
+      !resolvedTitle &&
       !currency &&
       destination === undefined &&
       startDate === undefined &&
@@ -300,7 +306,7 @@ router.put("/:groupId", async (req, res) => {
     const group = await ensureGroupCreator(groupId, req.userId);
 
     const updateData = {};
-    if (title) updateData.title = title;
+    if (resolvedTitle) updateData.title = resolvedTitle;
     if (currency) updateData.currency = currency;
     if (destination !== undefined) updateData.destination = destination;
     if (tripType !== undefined) updateData.tripType = tripType;
@@ -358,6 +364,25 @@ router.put("/:groupId", async (req, res) => {
         ? 403
         : 400;
 
+    res.status(status).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+router.post("/:groupId/leave", async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const result = await tripService.leaveTrip(groupId, req.userId);
+
+    res.json({
+      success: true,
+      data: result,
+      message: "Leave trip action completed successfully",
+    });
+  } catch (error) {
+    const status = error.message === "Trip not found" ? 404 : 400;
     res.status(status).json({
       success: false,
       error: error.message,

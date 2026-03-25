@@ -1,7 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../utils/prismaClient');
 const groupService = require('./groupService');
-
-const prisma = new PrismaClient();
 
 const normalizePhone = (phone) => {
   if (typeof phone !== 'string') return '';

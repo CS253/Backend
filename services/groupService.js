@@ -1,9 +1,8 @@
 const fs = require("fs/promises");
 const path = require("path");
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../utils/prismaClient");
 const geoip = require("geoip-lite");
 
-const prisma = new PrismaClient();
 const uploadsRoot = path.join(__dirname, "..", "uploads");
 const MAX_GROUP_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_GROUP_PHOTO_TYPES = new Set([

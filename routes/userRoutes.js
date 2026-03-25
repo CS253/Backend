@@ -79,6 +79,99 @@ router.post('/users/sync', async (req, res) => {
   }
 });
 
+router.get('/users/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phoneNumber: true,
+        upiId: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+router.put('/users/me', authMiddleware, async (req, res) => {
+  try {
+    const { name, phoneNumber, upiId } = req.body;
+
+    const updateData = {};
+
+    if (name !== undefined) {
+      const trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) {
+        return res.status(400).json({
+          success: false,
+          error: 'Name is required',
+        });
+      }
+      updateData.name = trimmedName;
+    }
+
+    if (phoneNumber !== undefined) {
+      const trimmedPhone = typeof phoneNumber === 'string' ? phoneNumber.trim() : '';
+      updateData.phoneNumber = trimmedPhone || null;
+    }
+
+    if (upiId !== undefined) {
+      const trimmedUpiId = typeof upiId === 'string' ? upiId.trim() : '';
+      updateData.upiId = trimmedUpiId || null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one profile field is required',
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: req.userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phoneNumber: true,
+        upiId: true,
+        createdAt: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      data: user,
+      message: 'Profile updated successfully',
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 router.get('/users/:userId', authMiddleware, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -96,6 +189,7 @@ router.get('/users/:userId', authMiddleware, async (req, res) => {
         id: true,
         email: true,
         name: true,
+        phoneNumber: true,
         upiId: true,
         createdAt: true,
       },

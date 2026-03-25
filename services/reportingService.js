@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../utils/prismaClient');
 
 /**
  * Calculate balances for all members in a group (per currency)
