@@ -113,6 +113,7 @@ function buildBaseMediaPayload(item) {
 function buildPhotoPayload(item) {
   return {
     ...buildBaseMediaPayload(item),
+    downloadUrl: item.fileUrl,
     imageUrl: item.fileUrl
   };
 }
@@ -139,6 +140,7 @@ function serializeMedia(item, responseVariant) {
 
   return {
     ...buildBaseMediaPayload(item),
+    downloadUrl: item.fileUrl,
     imageUrl: item.mediaType === "photo" ? item.fileUrl : undefined,
     documentUrl: item.mediaType === "document" ? item.fileUrl : undefined
   };

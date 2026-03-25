@@ -7,7 +7,6 @@ const cookieParser = require("cookie-parser");
 require("dotenv").config();
 
 const { initFirebase } = require("./services/firebaseAdmin");
-const authRoutes = require("./routes/authRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const mediaRoutes = require("./routes/mediaRoutes");
 const photoRoutes = require("./routes/photoRoutes");
@@ -15,7 +14,6 @@ const documentRoutes = require("./routes/documentRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const userRoutes = require("./routes/userRoutes");
 const settlementRoutes = require("./routes/settlementRoutes");
-const tripRoutes = require("./routes/tripRoutes");
 
 initFirebase();
 
@@ -28,7 +26,6 @@ app.use(express.json());
 app.use(cookieParser());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-app.use("/api/auth", authRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/media", mediaRoutes);
 app.use("/api/photos", photoRoutes);
@@ -36,7 +33,6 @@ app.use("/api/documents", documentRoutes);
 app.use("/api", expenseRoutes);
 app.use("/api", userRoutes);
 app.use("/api", settlementRoutes);
-app.use("/api", tripRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Travelly API is running..." });

@@ -1,9 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const groupService = require('./groupService');
-const { admin } = require('./firebaseAdmin');
 const {
   attachInvitedMembersToTrip,
-  claimPendingParticipantsForUser,
 } = require('./memberInviteService');
 
 const prisma = new PrismaClient();
@@ -13,77 +11,6 @@ const normalizeName = (value) =>
 
 const formatPlaceholderId = (tripId, name, index = 0) =>
   `placeholder-${tripId}-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-
-const resolveUserId = async (userIdentifier, authorizationHeader = null) => {
-  if (userIdentifier) {
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ id: userIdentifier }, { firebaseUid: userIdentifier }],
-      },
-      select: {
-        id: true,
-        phoneNumber: true,
-      },
-    });
-
-    if (existingUser) {
-      await claimPendingParticipantsForUser(existingUser);
-      return existingUser.id;
-    }
-  }
-
-  const token = authorizationHeader?.startsWith('Bearer ')
-    ? authorizationHeader.slice(7).trim()
-    : null;
-
-  if (!token) {
-    throw new Error('User not found');
-  }
-
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    const { uid, email, name } = decodedToken;
-
-    let user = await prisma.user.findFirst({
-      where: {
-        OR: [{ firebaseUid: uid }, ...(email ? [{ email }] : [])],
-      },
-    });
-
-    if (user) {
-      if (user.firebaseUid !== uid) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            firebaseUid: uid,
-            name: user.name || name || undefined,
-            email: user.email || email || undefined,
-          },
-        });
-      }
-
-      await claimPendingParticipantsForUser(user);
-      return user.id;
-    }
-
-    if (!email) {
-      throw new Error('User not found');
-    }
-
-    user = await prisma.user.create({
-      data: {
-        firebaseUid: uid,
-        email,
-        name: name || email.split('@')[0],
-      },
-    });
-
-    await claimPendingParticipantsForUser(user);
-    return user.id;
-  } catch (error) {
-    throw new Error('User not found');
-  }
-};
 
 const getPendingParticipants = (rawParticipants, actualMembers, tripId) => {
   const normalizedParticipants = groupService.normalizePreAddedParticipants(rawParticipants);
@@ -125,14 +52,48 @@ const mapTrip = (group) => {
   };
 };
 
-async function createTrip(data, clientIp, authorizationHeader = null) {
+async function getTripForMember(tripId, userId, include = {}) {
+  const trip = await prisma.group.findFirst({
+    where: {
+      id: tripId,
+      members: {
+        some: {
+          userId,
+        },
+      },
+    },
+    include,
+  });
+
+  if (!trip) {
+    throw new Error('Trip not found');
+  }
+
+  return trip;
+}
+
+async function ensureTripCreator(tripId, userId) {
+  const trip = await prisma.group.findUnique({
+    where: { id: tripId },
+  });
+
+  if (!trip) {
+    throw new Error('Trip not found');
+  }
+
+  if (trip.createdBy !== userId) {
+    throw new Error('Only the trip creator can perform this action');
+  }
+
+  return trip;
+}
+
+async function createTrip(data, clientIp) {
   const { name, destination, startDate, endDate, tripType, createdBy, coverImage } = data;
 
   if (!name || !destination || !startDate || !endDate || !createdBy) {
     throw new Error('name, destination, startDate, endDate, and createdBy are required');
   }
-
-  const resolvedCreatedBy = await resolveUserId(createdBy, authorizationHeader);
 
   const createdGroup = await groupService.createGroupWithParticipants(
     {
@@ -141,7 +102,7 @@ async function createTrip(data, clientIp, authorizationHeader = null) {
       startDate,
       endDate,
       tripType,
-      createdBy: resolvedCreatedBy,
+      createdBy,
       coverImage,
     },
     clientIp
@@ -168,9 +129,7 @@ async function createTrip(data, clientIp, authorizationHeader = null) {
   return mapTrip(trip);
 }
 
-async function getUserTrips(userId, options = {}, authorizationHeader = null) {
-  const resolvedUserId = await resolveUserId(userId, authorizationHeader);
-
+async function getUserTrips(userId, options = {}) {
   const page = Math.max(parseInt(options.page, 10) || 1, 1);
   const limit = Math.max(parseInt(options.limit, 10) || 10, 1);
   const skip = (page - 1) * limit;
@@ -178,7 +137,7 @@ async function getUserTrips(userId, options = {}, authorizationHeader = null) {
   const where = {
     members: {
       some: {
-        userId: resolvedUserId,
+        userId,
       },
     },
   };
@@ -215,21 +174,17 @@ async function getUserTrips(userId, options = {}, authorizationHeader = null) {
   };
 }
 
-async function getTripById(tripId, userId = null, authorizationHeader = null) {
+async function getTripById(tripId, userId = null) {
   if (!tripId) {
     throw new Error('tripId is required');
   }
 
-  const resolvedUserId = userId
-    ? await resolveUserId(userId, authorizationHeader)
-    : null;
-
-  const where = resolvedUserId
+  const where = userId
     ? {
         id: tripId,
         members: {
           some: {
-            userId: resolvedUserId,
+            userId,
           },
         },
       }
@@ -260,28 +215,21 @@ async function getTripById(tripId, userId = null, authorizationHeader = null) {
   return mapTrip(trip);
 }
 
-async function getTripMembers(tripId) {
-  const trip = await prisma.group.findUnique({
-    where: { id: tripId },
-    include: {
-      members: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phoneNumber: true,
-              email: true,
-            },
+async function getTripMembers(tripId, userId) {
+  const trip = await getTripForMember(tripId, userId, {
+    members: {
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true,
+            email: true,
           },
         },
       },
     },
   });
-
-  if (!trip) {
-    throw new Error('Trip not found');
-  }
 
   const actualMembers = trip.members.map((member) => ({
     id: member.user.id,
@@ -297,44 +245,33 @@ async function getTripMembers(tripId) {
   return [...actualMembers, ...pendingParticipants];
 }
 
-async function addTripMembers(tripId, members = []) {
+async function addTripMembers(tripId, members = [], userId) {
   if (!Array.isArray(members) || members.length === 0) {
     throw new Error('members must be a non-empty array');
   }
 
-  const trip = await prisma.group.findUnique({
-    where: { id: tripId },
-    include: {
-      members: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phoneNumber: true,
-              email: true,
-            },
+  await ensureTripCreator(tripId, userId);
+
+  const trip = await getTripForMember(tripId, userId, {
+    members: {
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true,
+            email: true,
           },
         },
       },
     },
   });
 
-  if (!trip) {
-    throw new Error('Trip not found');
-  }
-
   return attachInvitedMembersToTrip(trip, members);
 }
 
-async function updateTrip(tripId, data) {
-  const trip = await prisma.group.findUnique({
-    where: { id: tripId },
-  });
-
-  if (!trip) {
-    throw new Error('Trip not found');
-  }
+async function updateTrip(tripId, data, userId) {
+  const trip = await ensureTripCreator(tripId, userId);
 
   const nextStartDate = data.startDate ? new Date(data.startDate) : trip.startDate;
   const nextEndDate = data.endDate ? new Date(data.endDate) : trip.endDate;
@@ -359,40 +296,35 @@ async function updateTrip(tripId, data) {
     },
   });
 
-  return getTripById(tripId);
+  return getTripById(tripId, userId);
 }
 
-async function removeTripMember(tripId, memberId) {
+async function removeTripMember(tripId, memberId, userId) {
   if (!tripId || !memberId) {
     throw new Error('tripId and memberId are required');
   }
 
-  const trip = await prisma.group.findUnique({
-    where: { id: tripId },
-    include: {
-      members: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phoneNumber: true,
-            },
+  await ensureTripCreator(tripId, userId);
+
+  const trip = await getTripForMember(tripId, userId, {
+    members: {
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true,
           },
         },
       },
-      expenses: {
-        include: {
-          splits: true,
-        },
+    },
+    expenses: {
+      include: {
+        splits: true,
       },
     },
   });
-
-  if (!trip) {
-    throw new Error('Trip not found');
-  }
 
   const pendingParticipants = groupService.normalizePreAddedParticipants(trip.preAddedParticipants);
   const pendingParticipant = pendingParticipants.find((participant) => participant.id === memberId);
@@ -445,12 +377,10 @@ async function removeTripMember(tripId, memberId) {
   };
 }
 
-async function leaveTrip(tripId, userIdentifier, authorizationHeader = null) {
+async function leaveTrip(tripId, userId) {
   if (!tripId) {
     throw new Error('tripId is required');
   }
-
-  const resolvedUserId = await resolveUserId(userIdentifier, authorizationHeader);
 
   const trip = await prisma.group.findUnique({
     where: { id: tripId },
@@ -468,7 +398,7 @@ async function leaveTrip(tripId, userIdentifier, authorizationHeader = null) {
     throw new Error('Trip not found');
   }
 
-  if (trip.createdBy === resolvedUserId) {
+  if (trip.createdBy === userId) {
     const deleted = await groupService.deleteGroup(tripId, true);
     return {
       tripId,
@@ -478,7 +408,7 @@ async function leaveTrip(tripId, userIdentifier, authorizationHeader = null) {
     };
   }
 
-  const membership = trip.members.find((member) => member.userId === resolvedUserId);
+  const membership = trip.members.find((member) => member.userId === userId);
 
   if (!membership) {
     throw new Error('You are not a member of this trip');
@@ -486,8 +416,8 @@ async function leaveTrip(tripId, userIdentifier, authorizationHeader = null) {
 
   const hasExpenseHistory = trip.expenses.some(
     (expense) =>
-      expense.paidBy === resolvedUserId ||
-      expense.splits.some((split) => split.userId === resolvedUserId)
+      expense.paidBy === userId ||
+      expense.splits.some((split) => split.userId === userId)
   );
 
   if (hasExpenseHistory) {

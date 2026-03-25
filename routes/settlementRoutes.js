@@ -1,27 +1,50 @@
 const express = require('express');
-const router = express.Router();
 const settlementService = require('../services/settlementService');
-const { PrismaClient } = require('@prisma/client');
+const authMiddleware = require('../middleware/authMiddleware');
+const prisma = require('../utils/prismaClient');
 
-const prisma = new PrismaClient();
+const router = express.Router();
 
-console.log('✅ Settlement routes loaded at startup');
+const ensureGroupMember = async (req, res, next) => {
+  try {
+    const membership = await prisma.groupMember.findUnique({
+      where: {
+        userId_groupId: {
+          userId: req.userId,
+          groupId: req.params.groupId,
+        },
+      },
+    });
 
-/**
- * GET /groups/:groupId/balances
- * Get settlements needed for a group (calculated on-demand)
- * Returns settlements grouped by currency with user details
- */
+    if (!membership) {
+      return res.status(403).json({
+        success: false,
+        error: 'You are not a member of this group',
+      });
+    }
+
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server error',
+    });
+  }
+};
+
+router.use(authMiddleware);
+router.use('/groups/:groupId', ensureGroupMember);
+
 router.get('/groups/:groupId/balances', async (req, res) => {
   try {
     const { groupId } = req.params;
     const simplifyDebts = req.query.simplifyDebts;
 
-    // If simplifyDebts parameter exists in query, return settlements
-    if (req.query.hasOwnProperty('simplifyDebts')) {
-      // Parse query parameter: 'true' string becomes boolean true
-      const forceAlgorithm = simplifyDebts === 'true' ? true : simplifyDebts === 'false' ? false : null;
+    if (Object.prototype.hasOwnProperty.call(req.query, 'simplifyDebts')) {
+      const forceAlgorithm =
+        simplifyDebts === 'true' ? true : simplifyDebts === 'false' ? false : null;
       const settlements = await settlementService.calculateSettlements(groupId, forceAlgorithm);
+
       return res.json({
         success: true,
         data: settlements,
@@ -30,33 +53,28 @@ router.get('/groups/:groupId/balances', async (req, res) => {
       });
     }
 
-    // Otherwise return raw balances
     const balances = await settlementService.getGroupBalances(groupId);
 
-    res.json({
+    return res.json({
       success: true,
       data: balances,
       message: 'Balances organized by currency. Positive balance = owed money, Negative = owes money',
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * GET /groups/:groupId/settlements
- * Alias for /balances endpoint (same functionality)
- */
 router.get('/groups/:groupId/settlements', async (req, res) => {
   try {
     const { groupId } = req.params;
     const simplifyDebts = req.query.simplifyDebts;
 
-    // If simplifyDebts parameter exists in query, return settlements
-    if (req.query.hasOwnProperty('simplifyDebts')) {
-      // Parse query parameter: 'true' string becomes boolean true
-      const forceAlgorithm = simplifyDebts === 'true' ? true : simplifyDebts === 'false' ? false : null;
+    if (Object.prototype.hasOwnProperty.call(req.query, 'simplifyDebts')) {
+      const forceAlgorithm =
+        simplifyDebts === 'true' ? true : simplifyDebts === 'false' ? false : null;
       const settlements = await settlementService.calculateSettlements(groupId, forceAlgorithm);
+
       return res.json({
         success: true,
         data: settlements,
@@ -65,23 +83,18 @@ router.get('/groups/:groupId/settlements', async (req, res) => {
       });
     }
 
-    // Otherwise return raw balances
     const balances = await settlementService.getGroupBalances(groupId);
 
-    res.json({
+    return res.json({
       success: true,
       data: balances,
       message: 'Balances organized by currency. Positive balance = owed money, Negative = owes money',
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * POST /groups/:groupId/settlements/mark-paid
- * Mark a settlement as paid and create reimbursement transaction
- */
 router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -94,7 +107,6 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       });
     }
 
-    // Verify group exists
     const group = await prisma.group.findUnique({
       where: { id: groupId },
     });
@@ -106,7 +118,6 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       });
     }
 
-    // Create reimbursement transaction
     const transaction = await settlementService.markSettlementAsPaid(
       groupId,
       fromUserId,
@@ -115,26 +126,21 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       currency
     );
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       data: transaction,
       message: 'Settlement marked as paid. Reimbursement transaction recorded.',
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       error: error.message,
     });
   }
 });
 
-/**
- * POST /groups/:groupId/settlements/request-payment
- * Send payment reminder (notification to debtor)
- */
 router.post('/groups/:groupId/settlements/request-payment', async (req, res) => {
   try {
-    const { groupId } = req.params;
     const { fromUserId, toUserId, amount, currency } = req.body;
 
     if (!fromUserId || !toUserId || !amount || !currency) {
@@ -144,9 +150,7 @@ router.post('/groups/:groupId/settlements/request-payment', async (req, res) => 
       });
     }
 
-    // In production, this would send a notification/email
-    // For now, we just acknowledge the request
-    res.json({
+    return res.json({
       success: true,
       data: {
         fromUserId,
@@ -158,20 +162,15 @@ router.post('/groups/:groupId/settlements/request-payment', async (req, res) => 
       message: 'Payment request sent to debtor (notification would be sent in production)',
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       error: error.message,
     });
   }
 });
 
-/**
- * POST /groups/:groupId/settlements/initiate-payment
- * Simulate UPI payment redirect
- */
 router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) => {
   try {
-    const { groupId } = req.params;
     const { toUserId, amount, currency } = req.body;
 
     if (!toUserId || !amount || !currency) {
@@ -181,7 +180,6 @@ router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) =>
       });
     }
 
-    // Get recipient's UPI ID
     const recipient = await prisma.user.findUnique({
       where: { id: toUserId },
       select: { upiId: true, name: true },
@@ -194,10 +192,9 @@ router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) =>
       });
     }
 
-    // Simulate UPI payment redirect
     const paymentLink = `upi://pay?pa=${recipient.upiId}&pn=${recipient.name}&am=${amount}&tn=Travelly%20Reimbursement`;
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         paymentLink,
@@ -209,21 +206,24 @@ router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) =>
       message: 'Payment link generated. Redirect to UPI app.',
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       error: error.message,
     });
   }
 });
 
-/**
- * GET /groups/:groupId/payment-history
- * Get reimbursement transaction history
- */
 router.get('/groups/:groupId/payment-history', async (req, res) => {
   try {
     const { groupId } = req.params;
     const { fromDate, toDate, currency, userId } = req.query;
+
+    if (userId && userId !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only request your own payment history filter',
+      });
+    }
 
     const history = await settlementService.getPaymentHistory(groupId, {
       fromDate,
@@ -232,7 +232,6 @@ router.get('/groups/:groupId/payment-history', async (req, res) => {
       userId,
     });
 
-    // Enrich with user details
     const enrichedHistory = await Promise.all(
       history.map(async (transaction) => {
         const fromUser = await prisma.user.findUnique({
@@ -252,23 +251,19 @@ router.get('/groups/:groupId/payment-history', async (req, res) => {
       })
     );
 
-    res.json({
+    return res.json({
       success: true,
       data: enrichedHistory,
       count: enrichedHistory.length,
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       error: error.message,
     });
   }
 });
 
-/**
- * PUT /groups/:groupId/settings/simplify-debts
- * Update simplify debts toggle for the group
- */
 router.put('/groups/:groupId/settings/simplify-debts', async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -286,7 +281,7 @@ router.put('/groups/:groupId/settings/simplify-debts', async (req, res) => {
       simplifyDebts
     );
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         groupId: updatedGroup.id,
@@ -295,7 +290,7 @@ router.put('/groups/:groupId/settings/simplify-debts', async (req, res) => {
       message: `Settlement algorithm: ${simplifyDebts ? 'GREEDY (minimizes transactions)' : 'DINICS (preserves relationships)'}`,
     });
   } catch (error) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       error: error.message,
     });

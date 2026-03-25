@@ -2,6 +2,38 @@ const express = require('express');
 const router = express.Router();
 const expenseService = require('../services/expenseService');
 const reportingService = require('../services/reportingService');
+const authMiddleware = require('../middleware/authMiddleware');
+const prisma = require('../utils/prismaClient');
+
+const ensureGroupMember = async (req, res, next) => {
+  try {
+    const membership = await prisma.groupMember.findUnique({
+      where: {
+        userId_groupId: {
+          userId: req.userId,
+          groupId: req.params.groupId,
+        },
+      },
+    });
+
+    if (!membership) {
+      return res.status(403).json({
+        success: false,
+        error: 'You are not a member of this group',
+      });
+    }
+
+    return next();
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server error',
+    });
+  }
+};
+
+router.use(authMiddleware);
+router.use('/groups/:groupId', ensureGroupMember);
 
 // ===== EXPENSE ROUTES =====
 
@@ -18,7 +50,7 @@ router.post('/groups/:groupId/expenses', async (req, res) => {
       groupId,
       title,
       amount: parseFloat(amount),
-      paidBy,
+      paidBy: paidBy || req.userId,
       currency,
       split,
       notes,
@@ -189,12 +221,11 @@ router.get('/groups/:groupId/summary', async (req, res) => {
     const { groupId } = req.params;
     let { userId } = req.query;
 
-    // PRIVACY CHECK: If userId is requested, ensure it matches authenticated user
-    // For now, we log a warning. In production, implement proper JWT auth.
-    if (userId) {
-      // TODO: Verify req.user.id === userId (requires JWT authentication middleware)
-      // For now, we allow but log: console.log(`Individual stats requested for user: ${userId}`);
-      console.log(`Individual stats requested for user: ${userId}`);
+    if (userId && userId !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only request your own individual stats',
+      });
     }
 
     const summary = await reportingService.getGroupSummary(groupId, userId);

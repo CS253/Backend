@@ -1,250 +1,289 @@
-# Travelly - Backend MVP Specification
+# Travelly Backend MVP Specification
 
 ## Project Details
 
 **Name:** Travelly  
 **Type:** Group Trip Expense Manager  
 **Architecture:** REST API (Node.js + Express + PostgreSQL)  
-**Target:** College Project (6-8 weeks)
+**Target:** College Project
 
 **Purpose:**  
-Simplify expense splitting and balance tracking for group trips. Users can create trip groups, add shared expenses, and see who owes whom.
+Simplify expense splitting and balance tracking for group trips. Users create trip groups, invite members, add expenses, track balances, upload media, and manage trip settings from the same backend entity.
 
----
+## Current Architecture Decisions
 
-## Core Features (MVP)
+### Canonical Domain Model
+- `Group` is the canonical model for both:
+  - trip settings
+  - expense group behavior
 
-### 1. Authentication
-- User registration (email + password)
-- Login with JWT token
-- Password reset
+There is no separate public `Trip` API surface anymore. Trip-style fields live on `Group`:
+- `title`
+- `destination`
+- `startDate`
+- `endDate`
+- `tripType`
+- `coverImage`
+- `currency`
+- `inviteLink`
 
-### 2. User Profile
-- View/update profile
+### Authentication
+- Frontend authentication: **Firebase Auth**
+- Backend protected routes: **Firebase ID token verification**
+- Backend app user/profile persistence: **PostgreSQL `User` table**
+
+Current flow:
+1. user signs up or logs in on frontend with Firebase
+2. frontend gets Firebase ID token
+3. backend verifies the token
+4. backend syncs or creates the matching PostgreSQL user
+5. protected routes use resolved `req.userId`
+
+### File Storage
+- Current implementation: **local/server filesystem**
+- media files stored under:
+  - `uploads/groups/<groupId>/photo/...`
+  - `uploads/groups/<groupId>/document/...`
+  - `uploads/groups/<groupId>/profile/...`
+- PostgreSQL stores public `fileUrl` / `photoUrl`
+
+## Core Features
+
+### 1. User Sync & Profile
+- Sync Firebase user to PostgreSQL
+- Fetch own profile
 - Save UPI ID for settlements
 
-### 3. Groups
-- Create trip group
+### 2. Groups
+- Create group
+- Auto-detect default currency from IP if not provided
 - Generate invite link
-- Join group via link
-- View group members
+- Join via invite link
+- List groups for authenticated user
+- View group details
+- Update group settings
 - Delete group
+- View group members
+- Add actual or pending members
+- Remove actual or pending members
+- Group profile photo upload/update/delete
 
-### 4. Expenses
-- Add expense with multiple split strategies (equal all, equal selected, custom amounts)
-- View expense history with filtering by date and currency
-- Delete expense (removes all associated splits)
-- View detailed splits for each expense
-- Support for multi-currency expenses (grouped by currency)
+### 3. Expenses
+- Add expense
+- Equal split
+- Custom split
+- View group expenses
+- View one expense
+- Update expense
+- Delete expense
+- Group history
+- Group summary
 
-### 4.1 Expense Management (FR-8)
-- **Multiple Split Types (SIMPLIFIED - 2 Types):**
-  - **EQUAL**: Divides amount equally among specified participants (or all members if not specified)
-  - **CUSTOM**: Specifies exact amounts per member, validates sum equals total
-- **Multi-Currency Support:**
-  - Default currency set from mobile device location at group creation
-  - Expenses can override group currency
-  - Currency-specific balance calculations (no conversion)
-  - History grouped by currency
-  - Balances calculated per currency (USD, INR, etc.)
-- **Transfers (SIMPLIFIED):**
-  - Record transfers as EQUAL split with single participant
-  - Example: User-2 transfers $50 to User-1 by creating expense with type=EQUAL, split=[User-1]
-  - No separate Transfer model - integrates seamlessly with balance calculations
-- **Individual User Statistics:**
-  - Each user can see their personal stats alongside group totals
-  - Shows: amount paid, amount owed (their shares), net balance per currency
-  - Private to that user - requires userId parameter in query
-- **Comprehensive History:**
-  - Chronological view of all expenses (including transfers recorded as expenses)
-  - Filterable by date range, currency, and user
-- **Balance Reporting:**
-  - Per-currency balance calculations
-  - Shows positive balance (owed to member) and negative (owes money)
-  - Includes impact of both expenses and transfers
-- **Summary with Individual Context:**
-  - Group totals visible to all
-  - Individual totals = sum of member's shares in all expenses (per currency)
+### 4. Settlements
+- View balances
+- View settlement transactions
+- Mark settlement paid
+- Request payment
+- Initiate UPI payment link
+- View payment history
+- Toggle simplify-debts setting
 
-### 5. Settlements
-- View balances (who owes whom)
-- Mark payment as completed
-- Track settlement history
+### 5. Media
+- Upload gallery media
+- Upload documents
+- View photo feed
+- View document list
+- View generic mixed-media list
+- Download media/documents
+- Delete media/documents
 
-### 6. Media 
-- Upload trip photos
-- View group gallery
-
----
-
-## Backend Tech Stack
+## Tech Stack
 
 ### Core
-- **Runtime:** Node.js 18+
-- **Framework:** Express.js
-- **Database:** PostgreSQL
-- **ORM:** Prisma
-- **Auth:** JWT (jsonwebtoken)
-- **Password:** bcryptjs
-- **Storage:** Firebase Storage
+- Node.js
+- Express.js
+- PostgreSQL
+- Prisma
+- Firebase Admin SDK
+- Multer
 
-### NPM Packages
-```bash
-# Core
-npm install express @prisma/client dotenv cors
+### Storage
+- Local/server filesystem for current implementation
 
-# Auth & Security
-npm install jsonwebtoken bcryptjs express-validator helmet
-
-# Utils
-npm install morgan cookie-parser
-
-# Firebase
-npm install firebase-admin
-
-# Dev
-npm install -D prisma nodemon
-```
-
----
+### Key Runtime Packages
+- `express`
+- `@prisma/client`
+- `dotenv`
+- `cors`
+- `helmet`
+- `morgan`
+- `cookie-parser`
+- `firebase-admin`
+- `multer`
+- `geoip-lite`
 
 ## Database Schema
 
-### Tables (8)
+### User
+- `id`
+- `firebaseUid`
+- `email`
+- `passwordHash` optional legacy field
+- `name`
+- `phoneNumber`
+- `upiId`
+- `createdAt`
 
-**User**
-- id, email, passwordHash, name, upiId, createdAt
+### Group
+- `id`
+- `title`
+- `destination`
+- `startDate`
+- `endDate`
+- `tripType`
+- `coverImage`
+- `photoUrl`
+- `photoPath`
+- `inviteLink`
+- `inviteLinkStatus`
+- `createdBy`
+- `currency`
+- `preAddedParticipants`
+- `simplifyDebts`
+- `createdAt`
 
-**Group**
-- id, title, inviteLink, createdBy, currency, createdAt
+### GroupMember
+- `id`
+- `userId`
+- `groupId`
+- `joinedAt`
 
-**GroupMember**
-- id, userId, groupId, joinedAt
+### Expense
+- `id`
+- `title`
+- `amount`
+- `currency`
+- `groupId`
+- `paidBy`
+- `date`
+- `notes`
+- `splitType`
+- `createdAt`
 
-**Expense** (UPDATED)
-- id, title, amount, currency, groupId, paidBy, date, notes, splitType (EQUAL or CUSTOM), createdAt
+### ExpenseSplit
+- `id`
+- `expenseId`
+- `userId`
+- `amount`
 
-**ExpenseSplit** (UPDATED)
-- id, expenseId, userId, amount
+### Settlement
+- `id`
+- `fromUserId`
+- `toUserId`
+- `groupId`
+- `amount`
+- `currency`
+- `isPaid`
+- `paidAt`
+- `createdAt`
 
-**Settlement**
-- id, fromUserId, toUserId, groupId, amount, currency, isPaid, paidAt, createdAt
+### Transaction
+- `id`
+- `type`
+- `groupId`
+- `fromUserId`
+- `toUserId`
+- `amount`
+- `currency`
+- `date`
+- `createdAt`
 
-**Media** (optional)
-- id, fileURL, groupId, uploadedBy, createdAt
+### Media
+- `id`
+- `title`
+- `fileName`
+- `fileUrl`
+- `filePath`
+- `mimeType`
+- `mediaType`
+- `sizeBytes`
+- `groupId`
+- `uploadedBy`
+- `createdAt`
 
-**Note:** Transfer functionality is achieved through Expense records with EQUAL splitType and single participant (no separate Transfer table needed)
-
----
-
-## API Endpoints
-
-### Auth
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/reset-password`
+## Public API Surfaces
 
 ### User
-- `GET /api/users/profile`
-- `PUT /api/users/profile`
+- `POST /api/users`
+- `POST /api/users/sync`
+- `GET /api/users/:userId`
 
 ### Groups
-- `POST /api/groups`
 - `GET /api/groups`
-- `GET /api/groups/:id`
+- `POST /api/groups`
+- `GET /api/groups/:groupId`
+- `PUT /api/groups/:groupId`
+- `DELETE /api/groups/:groupId`
 - `POST /api/groups/join`
-- `DELETE /api/groups/:id`
+- `GET /api/groups/:groupId/members`
+- `POST /api/groups/:groupId/members`
+- `DELETE /api/groups/:groupId/members/:memberId`
+- `GET /api/groups/:groupId/photo`
+- `PUT /api/groups/:groupId/photo`
+- `DELETE /api/groups/:groupId/photo`
 
-### Expenses
-- `POST /api/groups/:groupId/expenses` - Create expense with split configuration (EQUAL or CUSTOM)
-- `GET /api/groups/:groupId/expenses` - Get all expenses (with filters: date range, currency, paidBy)
-- `GET /api/groups/:groupId/expenses/:expenseId` - Get specific expense with splits
-- `DELETE /api/groups/:groupId/expenses/:expenseId` - Delete expense and associated splits
-
-### Reporting & Transfers
-- Transfers are recorded as EQUAL split expenses with single participant
-- Example: `{"type": "EQUAL", "participants": ["recipient-id"]}` with paidBy sender
-- `GET /api/groups/:groupId/balances` - Get all member balances (by currency)
-- `GET /api/groups/:groupId/history` - Get complete history (expenses including transfers)
-- `GET /api/groups/:groupId/summary` - Get group statistics
-- `GET /api/groups/:groupId/summary?userId={id}` - Get group stats + individual user stats (private)
+### Expenses & Reporting
+- `POST /api/groups/:groupId/expenses`
+- `GET /api/groups/:groupId/expenses`
+- `GET /api/groups/:groupId/expenses/:expenseId`
+- `PUT /api/groups/:groupId/expenses/:expenseId`
+- `DELETE /api/groups/:groupId/expenses/:expenseId`
+- `GET /api/groups/:groupId/history`
+- `GET /api/groups/:groupId/summary`
 
 ### Settlements
-- `GET /api/balances/:groupId`
-- `GET /api/settlements/:groupId`
-- `POST /api/settlements/:id/mark-paid`
+- `GET /api/groups/:groupId/balances`
+- `GET /api/groups/:groupId/settlements`
+- `POST /api/groups/:groupId/settlements/mark-paid`
+- `POST /api/groups/:groupId/settlements/request-payment`
+- `POST /api/groups/:groupId/settlements/initiate-payment`
+- `GET /api/groups/:groupId/payment-history`
+- `PUT /api/groups/:groupId/settings/simplify-debts`
 
-### Media (optional)
-- `POST /api/media/:groupId`
-- `GET /api/media/:groupId`
+### Media
+- `GET /api/photos`
+- `POST /api/photos/upload`
+- `GET /api/photos/:id/download`
+- `DELETE /api/photos/:id`
+- `POST /api/photos/delete`
 
----
+- `GET /api/documents`
+- `POST /api/documents/upload`
+- `GET /api/documents/:id/download`
+- `DELETE /api/documents/:id`
+- `POST /api/documents/delete`
 
-## Project Structure
-
-```
-travelly-backend/
-├── prisma/
-│   └── schema.prisma
-├── src/
-│   ├── controllers/
-│   ├── routes/
-│   ├── middleware/
-│   ├── services/
-│   └── utils/
-├── .env
-├── server.js
-└── package.json
-```
-
----
+- `GET /api/media`
+- `POST /api/media/upload`
+- `DELETE /api/media/:id`
 
 ## Environment Variables
 
 ```env
 PORT=5000
-DATABASE_URL="postgresql://user:pass@localhost:5432/travelly_db"
-JWT_SECRET=your-secret-key
-JWT_EXPIRE=24h
-FIREBASE_STORAGE_BUCKET=your-bucket.appspot.com
+DATABASE_URL="postgresql://user:pass@host:5432/travelly_db"
+APP_BASE_URL=http://localhost:5000
+
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
----
+## Important Notes
 
-## Key Business Logic
-
-### Balance Calculation (UPDATED)
-1. Group expenses by currency (no conversion)
-2. For each currency:
-   - Sum all expenses paid by each user (including transfers)
-   - Calculate individual's share from expenses
-   - Net balance = amount paid - amount owed
-3. Generate settlements from debtors to creditors per currency
-4. Positive balance = member is owed money, Negative = member owes money
-
-### Split Logic (UPDATED)
-- **EQUAL**: Divides expense equally among all group members
-- **SELECTED_EQUAL**: Divides equally among selected members only
-- **CUSTOM**: Assigns specific amounts to individual members
-- Amount per person = total / number of people (with 0.01 rounding tolerance)
-- All participants must be group members
-
-### Multi-Currency Handling
-- Default currency determined by mobile device location at group creation
-- Each expense can override group currency
-- Balances calculated separately per currency (no conversion)
-- Transfers also support currency specification
-- History and reporting organized by currency
-
----
-
-## What's NOT in MVP (Future Features)
-
-- OTP verification
-- Google Sign-In
-- Multi-currency conversion (currencies kept separate per FR-8 requirement)
-- UPI integration
-- Debt simplification algorithm
-- Push notifications
-- Route optimization
-- Recurring expenses
+1. `fileUrl` is the canonical media field.
+2. `/api/photos` also returns `imageUrl` for frontend compatibility.
+3. `/api/photos` and `/api/documents` are specialized route variants over shared media handling.
+4. Expense and settlement routes are protected and require group membership.
+5. `passwordHash`, `JWT_SECRET`, and related legacy pieces may still exist in repo history/config, but active auth flow is Firebase-based.
+6. Prisma migration history in the merged branch is not fully clean; `prisma db push` may be safer than `migrate dev` on fresh teammate setups.

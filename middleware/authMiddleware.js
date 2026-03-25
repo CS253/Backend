@@ -1,23 +1,17 @@
-const jwt = require("jsonwebtoken");
+const { resolveAuthenticatedUser } = require("../services/authService");
 
-module.exports = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({
-      error: "Access denied"
-    });
-  }
-
-  const token = authHeader.split(" ")[1];
-
+module.exports = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.userId;
+    const { user, firebaseUid } = await resolveAuthenticatedUser(req.headers.authorization);
+
+    req.userId = user.id;
+    req.firebaseUid = firebaseUid;
+    req.authUser = user;
+
     next();
-  } catch (_error) {
-    res.status(401).json({
-      error: "Invalid token"
+  } catch (error) {
+    return res.status(401).json({
+      error: error.message === "Access denied" ? "Access denied" : "Invalid token"
     });
   }
 };
