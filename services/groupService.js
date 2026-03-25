@@ -38,6 +38,49 @@ const countryToCurrency = {
   MT: 'EUR',
 };
 
+const normalizeParticipantName = (value) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const normalizePreAddedParticipants = (participants = []) => {
+  if (!Array.isArray(participants)) {
+    return [];
+  }
+
+  return participants
+    .map((participant, index) => {
+      if (typeof participant === 'string') {
+        const name = participant.trim();
+        return name
+          ? {
+              id: `placeholder-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+              name,
+              phone: null,
+            }
+          : null;
+      }
+
+      if (participant && typeof participant === 'object') {
+        const name = typeof participant.name === 'string' ? participant.name.trim() : '';
+        if (!name) return null;
+
+        return {
+          id:
+            typeof participant.id === 'string' && participant.id.trim() !== ''
+              ? participant.id.trim()
+              : `placeholder-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          name,
+          phone:
+            typeof participant.phone === 'string' && participant.phone.trim() !== ''
+              ? participant.phone.trim()
+              : null,
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+};
+
 /**
  * Get currency from IP address
  * @param {string} ip - Client IP address
@@ -71,6 +114,11 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
     createdBy,
     preAddedParticipants = [], // Array of participant names ["Alice", "Bob"]
     currency = null,
+    destination = '',
+    startDate = null,
+    endDate = null,
+    tripType = 'Other',
+    coverImage = null,
   } = groupData;
 
   // Validate required fields
@@ -79,11 +127,24 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
   }
 
   // Validate pre-added participants are unique
-  if (preAddedParticipants.length > 0) {
-    const uniqueNames = new Set(preAddedParticipants);
-    if (uniqueNames.size !== preAddedParticipants.length) {
+  const normalizedParticipants = normalizePreAddedParticipants(preAddedParticipants);
+
+  if (normalizedParticipants.length > 0) {
+    const uniqueNames = new Set(normalizedParticipants.map((participant) => participant.name.toLowerCase()));
+    if (uniqueNames.size !== normalizedParticipants.length) {
       throw new Error('Duplicate names in pre-added participants. Each name must be unique.');
     }
+  }
+
+  const parsedStartDate = startDate ? new Date(startDate) : new Date();
+  const parsedEndDate = endDate ? new Date(endDate) : parsedStartDate;
+
+  if (Number.isNaN(parsedStartDate.getTime()) || Number.isNaN(parsedEndDate.getTime())) {
+    throw new Error('Invalid trip dates provided');
+  }
+
+  if (parsedEndDate < parsedStartDate) {
+    throw new Error('End date must be after or equal to start date');
   }
 
   // Auto-detect currency from IP if not provided
@@ -100,11 +161,16 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
     const group = await prisma.group.create({
       data: {
         title,
+        destination: destination || '',
+        startDate: parsedStartDate,
+        endDate: parsedEndDate,
+        tripType: tripType || 'Other',
+        coverImage,
         currency: finalCurrency,
         createdBy,
         inviteLink,
         inviteLinkStatus: 'ACTIVE',
-        preAddedParticipants: preAddedParticipants, // Store as JSON array
+        preAddedParticipants: Array.isArray(preAddedParticipants) ? preAddedParticipants : [],
       },
     });
 
@@ -119,6 +185,11 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
     return {
       groupId: group.id,
       title: group.title,
+      destination: group.destination,
+      startDate: group.startDate,
+      endDate: group.endDate,
+      tripType: group.tripType,
+      coverImage: group.coverImage,
       currency: group.currency,
       inviteLink: group.inviteLink,
       preAddedParticipants: group.preAddedParticipants,
@@ -187,11 +258,12 @@ const joinGroupByInviteLink = async (inviteLink, userId, participantName) => {
     }
 
     // Get pre-added participants list
-    const preAddedParticipants = group.preAddedParticipants || [];
+    const preAddedParticipants = normalizePreAddedParticipants(group.preAddedParticipants || []);
 
     // Check if participant name is in pre-added list or is new
-    const isPreAdded = Array.isArray(preAddedParticipants) &&
-      preAddedParticipants.includes(participantName);
+    const isPreAdded = preAddedParticipants.some(
+      (participant) => normalizeParticipantName(participant.name) === normalizeParticipantName(participantName)
+    );
 
     // Add user to group
     const newMember = await prisma.groupMember.create({
@@ -200,6 +272,19 @@ const joinGroupByInviteLink = async (inviteLink, userId, participantName) => {
         groupId: group.id,
       },
     });
+
+    if (isPreAdded) {
+      const remainingParticipants = preAddedParticipants.filter(
+        (participant) => normalizeParticipantName(participant.name) !== normalizeParticipantName(participantName)
+      );
+
+      await prisma.group.update({
+        where: { id: group.id },
+        data: {
+          preAddedParticipants: remainingParticipants,
+        },
+      });
+    }
 
     // Return group details with member list
     const updatedGroup = await prisma.group.findUnique({
@@ -296,6 +381,7 @@ const revokeInviteLink = async (groupId) => {
 
 module.exports = {
   getCurrencyFromIP,
+  normalizePreAddedParticipants,
   createGroupWithParticipants,
   joinGroupByInviteLink,
   deleteGroup,

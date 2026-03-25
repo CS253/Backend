@@ -12,6 +12,7 @@ initFirebase();
 const expenseRoutes = require('./routes/expenseRoutes');
 const userRoutes = require('./routes/userRoutes');
 const settlementRoutes = require('./routes/settlementRoutes');
+const tripRoutes = require('./routes/tripRoutes');
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use(cookieParser());
 app.use('/api', expenseRoutes);
 app.use('/api', userRoutes);
 app.use('/api', settlementRoutes);
+app.use('/api', tripRoutes);
 
 // Basic Route
 app.get('/', (req, res) => {

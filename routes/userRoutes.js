@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const groupService = require('../services/groupService');
 const { admin } = require('../services/firebaseAdmin');
+const { claimPendingParticipantsForUser } = require('../services/memberInviteService');
 
 const prisma = new PrismaClient();
 
@@ -161,6 +162,7 @@ router.post('/users/sync', async (req, res) => {
     }
 
     console.log('DEBUG: Sync completed successfully for user:', user.id);
+    const inviteClaims = await claimPendingParticipantsForUser(user);
 
     res.json({
       success: true,
@@ -170,6 +172,8 @@ router.post('/users/sync', async (req, res) => {
         email: user.email,
         name: user.name,
         phoneNumber: user.phoneNumber,
+        claimedGroups: inviteClaims.claimedGroups,
+        claimedParticipants: inviteClaims.claimedParticipants,
       },
       message: 'User synced successfully',
     });
