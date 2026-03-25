@@ -28,12 +28,17 @@ model User {
 model Group {
   id                      String        @id @default(uuid())
   title                   String
+  destination             String        @default("")
+  startDate               DateTime      @default(now())
+  endDate                 DateTime      @default(now())
+  tripType                String        @default("Other")
+  coverImage              String?
   inviteLink              String        @unique
   inviteLinkStatus        String        @default("ACTIVE")  // ACTIVE or REVOKED
   createdBy               String
   creator                 User          @relation(fields: [createdBy], references: [id])
   currency                String        // Auto-detected from IP, user-overrideable, defaults to INR
-  preAddedParticipants    Json          @default("[]")      // Array of participant names ["Alice", "Bob"]
+  preAddedParticipants    Json          @default("[]")      // Array of participant names or placeholder objects
   simplifyDebts           Boolean       @default(false)     // If true, use greedy algorithm; if false, use netting (preserves relationships)
   createdAt               DateTime      @default(now())
   members                 GroupMember[]
