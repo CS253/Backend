@@ -79,7 +79,11 @@ exports.downloadMedia = async (req, res) => {
       mediaType: req.mediaTypeFilter
     });
 
-    res.download(file.absolutePath, file.fileName);
+    if (file.type === "redirect") {
+      return res.redirect(file.redirectUrl);
+    }
+
+    return res.download(file.absolutePath, file.fileName);
   } catch (error) {
     mediaService.handleControllerError(res, error);
   }

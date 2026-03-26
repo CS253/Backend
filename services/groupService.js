@@ -139,12 +139,10 @@ async function ensureGroupMember(userId, groupId) {
     prisma.group.findUnique({
       where: { id: groupId }
     }),
-    prisma.groupMember.findUnique({
+    prisma.groupMember.findFirst({
       where: {
-        userId_groupId: {
-          userId,
-          groupId
-        }
+        userId,
+        groupId
       }
     })
   ]);

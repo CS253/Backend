@@ -7,12 +7,10 @@ const router = express.Router();
 
 const ensureGroupMember = async (req, res, next) => {
   try {
-    const membership = await prisma.groupMember.findUnique({
+    const membership = await prisma.groupMember.findFirst({
       where: {
-        userId_groupId: {
-          userId: req.userId,
-          groupId: req.params.groupId,
-        },
+        userId: req.userId,
+        groupId: req.params.groupId,
       },
     });
 

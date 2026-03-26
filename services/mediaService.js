@@ -1,10 +1,8 @@
-const fs = require("fs/promises");
 const path = require("path");
 const prisma = require("../utils/prismaClient");
+const mediaStorage = require("../utils/mediaStorage");
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
-const uploadsRoot = path.join(__dirname, "..", "uploads");
-
 const ALLOWED_TYPES = {
   photo: new Set([
     "image/jpeg",
@@ -62,6 +60,8 @@ function sanitizeSegment(value, fallback) {
 }
 
 function inferMediaType(file, requestedType) {
+  const mimeType = resolveMimeType(file);
+
   if (requestedType === "document") {
     return "document";
   }
@@ -70,25 +70,52 @@ function inferMediaType(file, requestedType) {
     return "photo";
   }
 
-  if (file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/")) {
+  if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
     return "photo";
   }
 
   return "document";
 }
 
-function getAppBaseUrl() {
-  const baseUrl = process.env.APP_BASE_URL;
+function resolveMimeType(file) {
+  const rawMimeType = String(file.mimetype || "").trim().toLowerCase();
 
-  if (!baseUrl) {
-    throw new AppError(500, "APP_BASE_URL is not configured");
+  if (rawMimeType && rawMimeType !== "application/octet-stream") {
+    return rawMimeType;
   }
 
-  return baseUrl.replace(/\/+$/, "");
-}
+  const extension = path.extname(file.originalname || "").replace(".", "").toLowerCase();
 
-function buildPublicUrl(storedFilePath) {
-  return `${getAppBaseUrl()}/${storedFilePath.replace(/^\/+/, "")}`;
+  switch (extension) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "heic":
+      return "image/heic";
+    case "heif":
+      return "image/heif";
+    case "mp4":
+      return "video/mp4";
+    case "mov":
+    case "qt":
+      return "video/quicktime";
+    case "webm":
+      return "video/webm";
+    case "pdf":
+      return "application/pdf";
+    case "doc":
+      return "application/msword";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    case "txt":
+      return "text/plain";
+    default:
+      return rawMimeType || "application/octet-stream";
+  }
 }
 
 function buildBaseMediaPayload(item) {
@@ -151,12 +178,10 @@ async function ensureGroupMembership(userId, groupId) {
     throw new AppError(400, "groupId is required");
   }
 
-  const membership = await prisma.groupMember.findUnique({
+  const membership = await prisma.groupMember.findFirst({
     where: {
-      userId_groupId: {
-        userId,
-        groupId
-      }
+      userId,
+      groupId
     }
   });
 
@@ -189,16 +214,6 @@ async function loadMediaForAccess(id, mediaType) {
   }
 
   return media;
-}
-
-async function removeStoredObject(storagePath) {
-  try {
-    await fs.unlink(path.join(__dirname, "..", storagePath));
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      throw error;
-    }
-  }
 }
 
 exports.listMedia = async ({ userId, groupId, mediaType, responseVariant, page, limit }) => {
@@ -259,11 +274,12 @@ exports.uploadMedia = async ({ userId, groupId, requestedType, responseVariant, 
   try {
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
-      const mediaType = inferMediaType(file, requestedType);
+      const mimeType = resolveMimeType(file);
+      const mediaType = inferMediaType({ ...file, mimetype: mimeType }, requestedType);
       const allowedMimeTypes = ALLOWED_TYPES[mediaType];
 
-      if (!allowedMimeTypes || !allowedMimeTypes.has(file.mimetype)) {
-        throw new AppError(400, `Unsupported file format: ${file.mimetype}`);
+      if (!allowedMimeTypes || !allowedMimeTypes.has(mimeType)) {
+        throw new AppError(400, `Unsupported file format: ${mimeType}`);
       }
 
       if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -273,26 +289,20 @@ exports.uploadMedia = async ({ userId, groupId, requestedType, responseVariant, 
       const extension = path.extname(file.originalname) || "";
       const safeName = sanitizeSegment(path.basename(file.originalname, extension), "media");
       const generatedName = `${Date.now()}-${index}-${safeName}${extension.toLowerCase()}`;
-      const relativePath = path.join(
-        "groups",
-        sanitizeSegment(groupId, "group"),
+      const storedMedia = await mediaStorage.saveFile({
+        groupId,
         mediaType,
-        generatedName
-      );
-      const absolutePath = path.join(uploadsRoot, relativePath);
-      const storedFilePath = path.join("uploads", relativePath).replace(/\\/g, "/");
-      const publicUrl = buildPublicUrl(storedFilePath);
-
-      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, file.buffer);
+        generatedName,
+        buffer: file.buffer
+      });
 
       const dbMedia = await prisma.media.create({
         data: {
           title: normalizedTitles[index] || safeName,
           fileName: file.originalname,
-          fileUrl: publicUrl,
-          filePath: storedFilePath,
-          mimeType: file.mimetype,
+          fileUrl: storedMedia.fileUrl,
+          filePath: storedMedia.filePath,
+          mimeType,
           mediaType,
           sizeBytes: file.size,
           groupId,
@@ -313,7 +323,7 @@ exports.uploadMedia = async ({ userId, groupId, requestedType, responseVariant, 
   } catch (error) {
     await Promise.all(
       createdMedia.map((item) =>
-        removeStoredObject(item.filePath)
+        mediaStorage.deleteFile(item.filePath)
       )
     );
 
@@ -344,7 +354,7 @@ exports.deleteSingleMedia = async ({ userId, id, mediaType }) => {
     where: { id }
   });
 
-  await removeStoredObject(media.filePath);
+  await mediaStorage.deleteFile(media.filePath);
 
   return {
     message: "Media deleted successfully"
@@ -387,7 +397,7 @@ exports.deleteManyMedia = async ({ userId, ids, mediaType }) => {
   });
 
   await Promise.all(
-    mediaItems.map((item) => removeStoredObject(item.filePath))
+    mediaItems.map((item) => mediaStorage.deleteFile(item.filePath))
   );
 
   return {
@@ -400,18 +410,15 @@ exports.getDownloadableMedia = async ({ userId, id, mediaType }) => {
   const media = await loadMediaForAccess(id, mediaType);
   await ensureGroupMembership(userId, media.groupId);
 
-  const absolutePath = path.join(__dirname, "..", media.filePath);
-
   try {
-    await fs.access(absolutePath);
+    return await mediaStorage.getDownloadTarget({
+      filePath: media.filePath,
+      fileUrl: media.fileUrl,
+      fileName: media.fileName
+    });
   } catch (_error) {
     throw new AppError(404, "Stored file not found");
   }
-
-  return {
-    absolutePath,
-    fileName: media.fileName
-  };
 };
 
 exports.handleControllerError = (res, error) => {
@@ -423,6 +430,12 @@ exports.handleControllerError = (res, error) => {
 
   if (error && error.name === "MulterError") {
     return res.status(400).json({
+      error: error.message
+    });
+  }
+
+  if (error && error.name === "StorageConfigError") {
+    return res.status(500).json({
       error: error.message
     });
   }
