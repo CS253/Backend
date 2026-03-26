@@ -313,6 +313,24 @@ async function getPaymentHistory(groupId, filters = {}) {
 }
 
 /**
+ * Get group simplify debts setting
+ * @param {string} groupId - Group ID
+ * @returns {Object} Group with simplifyDebts setting
+ */
+async function getSimplifyDebtsSetting(groupId) {
+  const group = await prisma.group.findUnique({
+    where: { id: groupId },
+    select: { id: true, simplifyDebts: true },
+  });
+
+  if (!group) {
+    throw new Error(`Group with ID ${groupId} not found`);
+  }
+
+  return group;
+}
+
+/**
  * Update group simplify debts setting
  * @param {string} groupId - Group ID
  * @param {boolean} simplifyDebts - New setting
@@ -333,4 +351,5 @@ module.exports = {
   markSettlementAsPaid,
   getPaymentHistory,
   updateSimplifyDebtsSetting,
+  getSimplifyDebtsSetting,
 };

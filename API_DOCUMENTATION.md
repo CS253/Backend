@@ -409,6 +409,7 @@ All settlement routes require Firebase Bearer auth and group membership.
 ### POST `/groups/:groupId/settlements/request-payment`
 ### POST `/groups/:groupId/settlements/initiate-payment`
 ### GET `/groups/:groupId/payment-history`
+### GET `/groups/:groupId/settings/simplify-debts`
 ### PUT `/groups/:groupId/settings/simplify-debts`
 
 ## Error Format

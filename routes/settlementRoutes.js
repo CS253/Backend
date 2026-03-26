@@ -264,6 +264,26 @@ router.get('/groups/:groupId/payment-history', async (req, res) => {
   }
 });
 
+router.get('/groups/:groupId/settings/simplify-debts', async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const group = await settlementService.getSimplifyDebtsSetting(groupId);
+
+    return res.json({
+      success: true,
+      data: {
+        groupId: group.id,
+        simplifyDebts: group.simplifyDebts,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 router.put('/groups/:groupId/settings/simplify-debts', async (req, res) => {
   try {
     const { groupId } = req.params;
