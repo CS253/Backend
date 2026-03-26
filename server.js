@@ -14,6 +14,7 @@ const documentRoutes = require("./routes/documentRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const userRoutes = require("./routes/userRoutes");
 const settlementRoutes = require("./routes/settlementRoutes");
+const routePlannerRoutes = require("./routes/routePlannerRoutes");
 
 initFirebase();
 
@@ -33,9 +34,19 @@ app.use("/api/documents", documentRoutes);
 app.use("/api", expenseRoutes);
 app.use("/api", userRoutes);
 app.use("/api", settlementRoutes);
+app.use("/api/route-planner", routePlannerRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Travelly API is running..." });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Global Error:", err.message);
+
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || "Internal Server Error"
+  });
 });
 
 const PORT = process.env.PORT || 5000;

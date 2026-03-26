@@ -52,6 +52,7 @@ Current flow:
 ### 1. User Sync & Profile
 - Sync Firebase user to PostgreSQL
 - Fetch own profile
+- Update own profile
 - Save UPI ID for settlements
 
 ### 2. Groups
@@ -96,6 +97,12 @@ Current flow:
 - View generic mixed-media list
 - Download media/documents
 - Delete media/documents
+
+### 6. Route Planner
+- Plan route in manual order
+- Plan route in optimized order
+- Enrich places with opening/closing timing info when available
+- Return distance and duration summary via OpenRouteService for optimized plans
 
 ## Tech Stack
 
@@ -216,6 +223,8 @@ Current flow:
 ### User
 - `POST /api/users`
 - `POST /api/users/sync`
+- `GET /api/users/me`
+- `PUT /api/users/me`
 - `GET /api/users/:userId`
 
 ### Groups
@@ -225,6 +234,7 @@ Current flow:
 - `PUT /api/groups/:groupId`
 - `DELETE /api/groups/:groupId`
 - `POST /api/groups/join`
+- `POST /api/groups/:groupId/leave`
 - `GET /api/groups/:groupId/members`
 - `POST /api/groups/:groupId/members`
 - `DELETE /api/groups/:groupId/members/:memberId`
@@ -265,7 +275,14 @@ Current flow:
 
 - `GET /api/media`
 - `POST /api/media/upload`
+- `GET /api/media/:id/download`
 - `DELETE /api/media/:id`
+- `POST /api/media/delete`
+
+### Route Planner
+- `POST /api/route-planner/plan`
+- `POST /api/route-planner/optimize`
+- `POST /api/route-planner/manual-info`
 
 ## Environment Variables
 
@@ -277,6 +294,8 @@ APP_BASE_URL=http://localhost:5000
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+ORS_API_KEY=your-openrouteservice-api-key
+SERPAPI_KEY=your-serpapi-key
 ```
 
 ## Important Notes
@@ -287,3 +306,21 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 4. Expense and settlement routes are protected and require group membership.
 5. `passwordHash`, `JWT_SECRET`, and related legacy pieces may still exist in repo history/config, but active auth flow is Firebase-based.
 6. Prisma migration history in the merged branch is not fully clean; `prisma db push` may be safer than `migrate dev` on fresh teammate setups.
+
+## Firebase-Protected Endpoints
+
+Protected in current code:
+- `/api/users/me`
+- `/api/users/:userId`
+- all `/api/groups/*`
+- all `/api/photos/*`
+- all `/api/documents/*`
+- all `/api/media/*`
+- all `/api/route-planner/*`
+- all expense routes under `/api/groups/:groupId/*`
+- all settlement routes under `/api/groups/:groupId/*`
+
+Public in current code:
+- `GET /`
+- `POST /api/users`
+- `POST /api/users/sync`
