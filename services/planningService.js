@@ -50,12 +50,33 @@ async function optimizeRouteWithPlaceInfo({ departureTime, start, destinations }
   };
 }
 
-async function getManualRouteWithPlaceInfo({ departureTime, destinations }) {
+async function getManualRouteWithPlaceInfo({ departureTime, start, destinations }) {
   const enrichedStops = await enrichDestinationsWithTiming(destinations);
+
+  let totalDistanceKm = 0;
+  let totalDurationMinutes = 0;
+
+  if (start && enrichedStops.length > 0) {
+    const coordinates = [
+      [start.lng, start.lat],
+      ...enrichedStops.map((stop) => [stop.lng, stop.lat])
+    ];
+
+    try {
+      const summary = await getRouteSummary(coordinates);
+      totalDistanceKm = (summary.distanceMeters / 1000).toFixed(2);
+      totalDurationMinutes = (summary.durationSeconds / 60).toFixed(2);
+    } catch (e) {
+      console.warn("Could not calculate manual route summary:", e.message);
+    }
+  }
 
   return {
     departureTime,
-    stops: enrichedStops
+    start,
+    stops: enrichedStops,
+    totalDistanceKm,
+    totalDurationMinutes
   };
 }
 

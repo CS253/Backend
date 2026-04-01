@@ -1,7 +1,7 @@
 const {
   optimizeRouteWithPlaceInfo,
   getManualRouteWithPlaceInfo
-} = require("../services/planningService");
+} = require('../services/planningService');
 
 async function optimizeRouteController(req, res, next) {
   try {
@@ -137,6 +137,7 @@ async function planRouteController(req, res, next) {
 
     const result = await getManualRouteWithPlaceInfo({
       departureTime,
+      start,
       destinations
     });
 
