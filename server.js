@@ -31,8 +31,8 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/media", mediaRoutes);
 app.use("/api/photos", photoRoutes);
 app.use("/api/documents", documentRoutes);
-app.use("/api", expenseRoutes);
 app.use("/api", userRoutes);
+app.use("/api", expenseRoutes);
 app.use("/api", settlementRoutes);
 app.use("/api/route-planner", routePlannerRoutes);
 

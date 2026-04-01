@@ -51,8 +51,8 @@ async function syncFirebaseUser({
       data: {
         firebaseUid: uid,
         email,
-        name: finalName || user.name || undefined,
-        phoneNumber: finalPhoneNumber || user.phoneNumber || undefined
+        ...(finalName ? { name: finalName } : {}),
+        ...(finalPhoneNumber ? { phoneNumber: finalPhoneNumber } : {}),
       }
     });
   } else {

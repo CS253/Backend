@@ -8,53 +8,53 @@ datasource db {
 }
 
 model User {
-  id            String        @id @default(uuid())
-  firebaseUid   String?       @unique
-  email         String        @unique
+  id            String         @id @default(uuid())
+  email         String         @unique
   passwordHash  String?
   name          String?
-  phoneNumber   String?
   upiId         String?
-  createdAt     DateTime      @default(now())
-  groups        GroupMember[]
-  createdGroups Group[]
+  createdAt     DateTime       @default(now())
+  firebaseUid   String?        @unique
+  phoneNumber   String?
   expensesPaid  Expense[]
   splits        ExpenseSplit[]
-  uploadedMedia Media[]       @relation("UploadedMedia")
+  createdGroups Group[]
+  groups        GroupMember[]
+  uploadedMedia Media[]        @relation("UploadedMedia")
 }
 
 model Group {
   id                   String        @id @default(uuid())
   title                String
+  inviteLink           String        @unique
+  createdBy            String
+  currency             String
+  createdAt            DateTime      @default(now())
+  simplifyDebts        Boolean       @default(false)
+  inviteLinkStatus     String        @default("ACTIVE")
+  preAddedParticipants Json          @default("[]")
   destination          String        @default("")
   startDate            DateTime      @default(now())
   endDate              DateTime      @default(now())
   tripType             String        @default("Other")
   coverImage           String?
-  photoUrl             String?
   photoPath            String?
-  inviteLink           String        @unique
-  inviteLinkStatus     String        @default("ACTIVE")
-  createdBy            String
-  creator              User          @relation(fields: [createdBy], references: [id])
-  currency             String
-  preAddedParticipants Json          @default("[]")
-  simplifyDebts        Boolean       @default(false)
-  createdAt            DateTime      @default(now())
-  members              GroupMember[]
+  photoUrl             String?
   expenses             Expense[]
+  creator              User          @relation(fields: [createdBy], references: [id])
+  members              GroupMember[]
+  media                Media[]
   settlements          Settlement[]
   transactions         Transaction[]
-  media                Media[]
 }
 
 model GroupMember {
   id       String   @id @default(uuid())
   userId   String
-  user     User     @relation(fields: [userId], references: [id])
   groupId  String
-  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, groupId])
 }
@@ -65,23 +65,23 @@ model Expense {
   amount    Float
   currency  String         @default("USD")
   groupId   String
-  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
   paidBy    String
-  payer     User           @relation(fields: [paidBy], references: [id])
   date      DateTime       @default(now())
   notes     String?
   splitType String         @default("EQUAL")
-  splits    ExpenseSplit[]
   createdAt DateTime       @default(now())
+  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  payer     User           @relation(fields: [paidBy], references: [id])
+  splits    ExpenseSplit[]
 }
 
 model ExpenseSplit {
   id        String  @id @default(uuid())
   expenseId String
-  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   userId    String
-  user      User    @relation(fields: [userId], references: [id])
   amount    Float
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
 }
 
 model Settlement {
@@ -89,41 +89,41 @@ model Settlement {
   fromUserId String
   toUserId   String
   groupId    String
-  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   amount     Float
   currency   String    @default("USD")
   isPaid     Boolean   @default(false)
   paidAt     DateTime?
   createdAt  DateTime  @default(now())
+  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
 }
 
 model Transaction {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   type       String
   groupId    String
-  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   fromUserId String?
   toUserId   String?
   amount     Float
-  currency   String    @default("USD")
-  date       DateTime  @default(now())
-  createdAt  DateTime  @default(now())
+  currency   String   @default("USD")
+  date       DateTime @default(now())
+  createdAt  DateTime @default(now())
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
 }
 
 model Media {
   id         String   @id @default(uuid())
-  title      String?
-  fileName   String
-  fileUrl    String
-  filePath   String
-  mimeType   String
-  mediaType  String
-  sizeBytes  Int
   groupId    String
-  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   uploadedBy String
-  uploader   User     @relation("UploadedMedia", fields: [uploadedBy], references: [id])
   createdAt  DateTime @default(now())
+  fileName   String
+  filePath   String
+  fileUrl    String
+  mediaType  String
+  mimeType   String
+  sizeBytes  Int
+  title      String?
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  uploader   User     @relation("UploadedMedia", fields: [uploadedBy], references: [id])
 
   @@index([groupId, mediaType, createdAt])
 }
