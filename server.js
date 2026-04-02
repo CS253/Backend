@@ -25,7 +25,8 @@ app.use(cors());
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(cookieParser());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+const uploadTarget = process.env.LOCAL_UPLOAD_ROOT || path.join(__dirname, "uploads");
+app.use("/uploads", express.static(uploadTarget));
 
 app.use("/api/groups", groupRoutes);
 app.use("/api/media", mediaRoutes);

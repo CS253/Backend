@@ -2,7 +2,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const SftpClient = require("ssh2-sftp-client");
 
-const localUploadsRoot = path.join(__dirname, "..", "uploads");
+const localUploadsRoot = process.env.LOCAL_UPLOAD_ROOT || path.join(__dirname, "..", "uploads");
 const storageFolders = {
   photo: "photos",
   document: "documents",
