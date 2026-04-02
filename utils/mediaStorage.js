@@ -80,7 +80,7 @@ function encodeStorageKeyForUrl(storageKey) {
 }
 
 function getLocalPublicUrl(storageKey) {
-  const appBaseUrl = requireEnv("APP_BASE_URL").replace(/\/+$/, "");
+  const appBaseUrl = requireEnv("BASE_URL").replace(/\/+$/, "");
   return `${appBaseUrl}/uploads/${encodeStorageKeyForUrl(storageKey)}`;
 }
 
