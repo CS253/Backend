@@ -303,7 +303,7 @@ router.put("/:groupId", async (req, res) => {
       });
     }
 
-    const group = await ensureGroupCreator(groupId, req.userId);
+    const group = await ensureGroupMembership(groupId, req.userId);
 
     const updateData = {};
     if (resolvedTitle) updateData.title = resolvedTitle;
