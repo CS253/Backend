@@ -2,6 +2,8 @@ const prisma = require("../utils/prismaClient");
 const { admin } = require("./firebaseAdmin");
 const { claimPendingParticipantsForUser } = require("./memberInviteService");
 
+const PHONE_NUMBER_IN_USE_ERROR = "An account already exists with this phone number";
+
 function extractBearerToken(authorizationHeader) {
   if (!authorizationHeader || !authorizationHeader.startsWith("Bearer ")) {
     return null;
@@ -134,6 +136,29 @@ async function syncFirebaseUser({
     }
   });
 
+  if (finalPhoneNumber) {
+    const normalizedRequestedPhone = finalPhoneNumber.replace(/\D/g, "");
+    const requestedSuffix =
+      normalizedRequestedPhone.length > 10
+        ? normalizedRequestedPhone.slice(-10)
+        : normalizedRequestedPhone;
+
+    const conflictingUser = requestedSuffix
+      ? await prisma.user.findFirst({
+          where: {
+            phoneNumber: {
+              endsWith: requestedSuffix
+            },
+            ...(user?.id ? { NOT: { id: user.id } } : {})
+          }
+        })
+      : null;
+
+    if (conflictingUser) {
+      throw new Error(PHONE_NUMBER_IN_USE_ERROR);
+    }
+  }
+
   let created = false;
 
   if (user) {
@@ -174,5 +199,6 @@ async function syncFirebaseUser({
 module.exports = {
   extractBearerToken,
   resolveAuthenticatedUser,
-  syncFirebaseUser
+  syncFirebaseUser,
+  PHONE_NUMBER_IN_USE_ERROR
 };

@@ -1,7 +1,10 @@
 const express = require('express');
 const prisma = require('../utils/prismaClient');
 const authMiddleware = require('../middleware/authMiddleware');
-const { syncFirebaseUser } = require('../services/authService');
+const {
+  syncFirebaseUser,
+  PHONE_NUMBER_IN_USE_ERROR,
+} = require('../services/authService');
 
 const router = express.Router();
 
@@ -34,7 +37,13 @@ router.post('/users', async (req, res) => {
       message: created ? 'User created successfully' : 'User synced successfully',
     });
   } catch (error) {
-    return res.status(error.message.includes('token') ? 401 : 400).json({
+    const status = error.message.includes('token')
+      ? 401
+      : error.message === PHONE_NUMBER_IN_USE_ERROR
+      ? 409
+      : 400;
+
+    return res.status(status).json({
       success: false,
       error: error.message,
     });
@@ -72,7 +81,13 @@ router.post('/users/sync', async (req, res) => {
       message: 'User synced successfully',
     });
   } catch (error) {
-    return res.status(error.message.includes('token') ? 401 : 400).json({
+    const status = error.message.includes('token')
+      ? 401
+      : error.message === PHONE_NUMBER_IN_USE_ERROR
+      ? 409
+      : 400;
+
+    return res.status(status).json({
       success: false,
       error: error.message || 'Invalid or expired token',
     });
@@ -131,6 +146,35 @@ router.put('/users/me', authMiddleware, async (req, res) => {
 
     if (phoneNumber !== undefined) {
       const trimmedPhone = typeof phoneNumber === 'string' ? phoneNumber.trim() : '';
+
+      if (trimmedPhone) {
+        const normalizedPhone = trimmedPhone.replace(/\D/g, '');
+        const phoneSuffix =
+          normalizedPhone.length > 10
+            ? normalizedPhone.substring(normalizedPhone.length - 10)
+            : normalizedPhone;
+
+        const existingUser = phoneSuffix
+          ? await prisma.user.findFirst({
+              where: {
+                phoneNumber: {
+                  endsWith: phoneSuffix,
+                },
+                NOT: {
+                  id: req.userId,
+                },
+              },
+            })
+          : null;
+
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            error: PHONE_NUMBER_IN_USE_ERROR,
+          });
+        }
+      }
+
       updateData.phoneNumber = trimmedPhone || null;
     }
 
