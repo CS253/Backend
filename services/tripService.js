@@ -56,7 +56,7 @@ const mapTrip = (group) => {
     id: group.id,
     name: group.title,
     destination: group.destination || '',
-    coverImage: group.coverImage || null,
+    coverImage: group.coverImage || group.photoUrl || null,
     startDate: group.startDate.toISOString(),
     endDate: group.endDate.toISOString(),
     tripType: group.tripType || 'Other',

@@ -5,7 +5,8 @@ const SftpClient = require("ssh2-sftp-client");
 const localUploadsRoot = path.join(__dirname, "..", "uploads");
 const storageFolders = {
   photo: "photos",
-  document: "documents"
+  document: "documents",
+  coverPhoto: "cover photo"
 };
 
 class StorageConfigError extends Error {
@@ -40,11 +41,24 @@ function normalizeStorageKey(filePath) {
   return normalized;
 }
 
-function buildStorageKey({ groupId, mediaType, generatedName }) {
+function normalizeFolderName(value, fallback) {
+  const normalized = String(value || fallback)
+    .trim()
+    .replace(/[\\/]+/g, "-")
+    .replace(/\s+/g, " ");
+
+  return normalized || fallback;
+}
+
+function buildStorageKey({ groupId, mediaType, generatedName, folderName }) {
+  const resolvedFolder = folderName
+    ? normalizeFolderName(folderName, storageFolders[mediaType] || "media")
+    : storageFolders[mediaType] || sanitizeSegment(mediaType, "media");
+
   return path.posix.join(
     "groups",
     sanitizeSegment(groupId, "group"),
-    storageFolders[mediaType] || sanitizeSegment(mediaType, "media"),
+    resolvedFolder,
     generatedName
   );
 }
@@ -57,14 +71,22 @@ function requireEnv(name) {
   return value;
 }
 // nothin
+function encodeStorageKeyForUrl(storageKey) {
+  return normalizeStorageKey(storageKey)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
 function getLocalPublicUrl(storageKey) {
   const appBaseUrl = requireEnv("APP_BASE_URL").replace(/\/+$/, "");
-  return `${appBaseUrl}/uploads/${storageKey}`;
+  return `${appBaseUrl}/uploads/${encodeStorageKeyForUrl(storageKey)}`;
 }
 
 function getRemotePublicUrl(storageKey) {
   const publicBaseUrl = requireEnv("IITK_PUBLIC_BASE_URL").replace(/\/+$/, "");
-  return `${publicBaseUrl}/${storageKey}`;
+  return `${publicBaseUrl}/${encodeStorageKeyForUrl(storageKey)}`;
 }
 
 function getRemoteRoot() {
@@ -129,8 +151,8 @@ async function storeRemoteFile(storageKey, buffer) {
   }
 }
 
-exports.saveFile = async ({ groupId, mediaType, generatedName, buffer }) => {
-  const storageKey = buildStorageKey({ groupId, mediaType, generatedName });
+exports.saveFile = async ({ groupId, mediaType, generatedName, buffer, folderName }) => {
+  const storageKey = buildStorageKey({ groupId, mediaType, generatedName, folderName });
 
   if (getStorageDriver() === "sftp") {
     return storeRemoteFile(storageKey, buffer);
