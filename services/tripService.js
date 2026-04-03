@@ -135,6 +135,134 @@ async function getUserTrips(userId, options = {}) {
   };
 }
 
+/**
+ * Lean summary fetch — shell fields only, no member join.
+ * Used by the "My Trips" list for instant shell loading.
+ */
+async function getTripSummaries(userId) {
+  const groups = await prisma.group.findMany({
+    where: { members: { some: { userId } } },
+    orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+    select: {
+      id: true,
+      title: true,
+      destination: true,
+      startDate: true,
+      endDate: true,
+      tripType: true,
+      coverImage: true,
+      photoUrl: true,
+      createdBy: true,
+      currency: true,
+      inviteLink: true,
+      preAddedParticipants: true,
+      updatedAt: true,
+      _count: { select: { members: true } },
+    },
+  });
+
+  return groups.map((g) => ({
+    id: g.id,
+    name: g.title,
+    destination: g.destination || '',
+    coverImage: g.coverImage || g.photoUrl || null,
+    startDate: g.startDate.toISOString(),
+    endDate: g.endDate.toISOString(),
+    tripType: g.tripType || 'Other',
+    membersCount:
+      g._count.members +
+      (Array.isArray(g.preAddedParticipants) ? g.preAddedParticipants.length : 0),
+    createdBy: g.createdBy,
+    currency: g.currency,
+    inviteLink: g.inviteLink,
+    updatedAt: g.updatedAt.toISOString(),
+  }));
+}
+
+/**
+ * Partial update — only updates fields that are explicitly provided.
+ */
+async function patchTrip(groupId, userId, fields) {
+  const membership = await prisma.groupMember.findFirst({ where: { groupId, userId } });
+  if (!membership) throw new Error('Group not found or access denied');
+
+  // ── Optimistic Locking ──────────────────────────────────────────────────────
+  // If the client sends updatedAt, verify it matches the DB version.
+  // If the DB record is newer, the client has stale data → return 409 Conflict.
+  if (fields.updatedAt) {
+    const current = await prisma.group.findUnique({
+      where: { id: groupId },
+      select: { updatedAt: true, id: true, title: true, destination: true, startDate: true, endDate: true, tripType: true, coverImage: true, photoUrl: true, currency: true, simplifyDebts: true },
+    });
+    if (!current) throw new Error('Group not found or access denied');
+
+    const clientTs = new Date(fields.updatedAt).getTime();
+    const dbTs = current.updatedAt.getTime();
+
+    if (dbTs > clientTs) {
+      // Conflict: DB has a newer version — return fresh data so client can update
+      const err = new Error('CONFLICT');
+      err.statusCode = 409;
+      err.freshData = {
+        id: current.id,
+        name: current.title,
+        destination: current.destination || '',
+        coverImage: current.coverImage || current.photoUrl || null,
+        startDate: current.startDate.toISOString(),
+        endDate: current.endDate.toISOString(),
+        tripType: current.tripType || 'Other',
+        currency: current.currency,
+        simplifyDebts: current.simplifyDebts,
+        updatedAt: current.updatedAt.toISOString(),
+      };
+      throw err;
+    }
+  }
+
+  const allowed = ['title', 'destination', 'startDate', 'endDate', 'tripType', 'coverImage', 'simplifyDebts'];
+  const data = {};
+
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(fields, key) && fields[key] !== undefined) {
+      if (key === 'startDate' || key === 'endDate') {
+        const d = new Date(fields[key]);
+        if (isNaN(d.getTime())) throw new Error(`Invalid date for ${key}`);
+        data[key] = d;
+      } else {
+        data[key] = fields[key];
+      }
+    }
+  }
+
+  if (Object.keys(data).length === 0) throw new Error('No valid fields to update');
+
+  if (data.startDate || data.endDate) {
+    const curr = await prisma.group.findUnique({ where: { id: groupId }, select: { startDate: true, endDate: true } });
+    const nextStart = data.startDate || curr.startDate;
+    const nextEnd = data.endDate || curr.endDate;
+    if (nextEnd < nextStart) throw new Error('End date must be after or equal to start date');
+  }
+
+  const updated = await prisma.group.update({
+    where: { id: groupId },
+    data,
+    select: { id: true, title: true, destination: true, startDate: true, endDate: true, tripType: true, coverImage: true, photoUrl: true, currency: true, simplifyDebts: true, updatedAt: true },
+  });
+
+  return {
+    id: updated.id,
+    name: updated.title,
+    destination: updated.destination || '',
+    coverImage: updated.coverImage || updated.photoUrl || null,
+    startDate: updated.startDate.toISOString(),
+    endDate: updated.endDate.toISOString(),
+    tripType: updated.tripType || 'Other',
+    currency: updated.currency,
+    simplifyDebts: updated.simplifyDebts,
+    updatedAt: updated.updatedAt.toISOString(),
+  };
+}
+
 async function getTripMembers(tripId, userId) {
   const trip = await getTripForMember(tripId, userId, {
     ...memberWithUserInclude,
@@ -296,7 +424,9 @@ async function leaveTrip(tripId, userId) {
 module.exports = {
   addTripMembers,
   getTripMembers,
+  getTripSummaries,
   getUserTrips,
   leaveTrip,
+  patchTrip,
   removeTripMember,
 };
