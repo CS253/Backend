@@ -104,6 +104,7 @@ router.get('/users/me', authMiddleware, async (req, res) => {
         name: true,
         phoneNumber: true,
         upiId: true,
+        notificationsEnabled: true,
         createdAt: true,
       },
     });
@@ -129,7 +130,7 @@ router.get('/users/me', authMiddleware, async (req, res) => {
 
 router.put('/users/me', authMiddleware, async (req, res) => {
   try {
-    const { name, phoneNumber, upiId } = req.body;
+    const { name, phoneNumber, upiId, notificationsEnabled } = req.body;
 
     const updateData = {};
 
@@ -183,6 +184,10 @@ router.put('/users/me', authMiddleware, async (req, res) => {
       updateData.upiId = trimmedUpiId || null;
     }
 
+    if (notificationsEnabled !== undefined) {
+      updateData.notificationsEnabled = Boolean(notificationsEnabled);
+    }
+
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         success: false,
@@ -199,6 +204,7 @@ router.put('/users/me', authMiddleware, async (req, res) => {
         name: true,
         phoneNumber: true,
         upiId: true,
+        notificationsEnabled: true,
         createdAt: true,
       },
     });
@@ -235,6 +241,7 @@ router.get('/users/:userId', authMiddleware, async (req, res) => {
         name: true,
         phoneNumber: true,
         upiId: true,
+        notificationsEnabled: true,
         createdAt: true,
       },
     });

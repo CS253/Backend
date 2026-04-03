@@ -1,5 +1,6 @@
 const prisma = require('../utils/prismaClient');
 const groupService = require('./groupService');
+const notificationService = require('./notificationService');
 const {
   attachInvitedMembersToTrip,
 } = require('./memberInviteService');
@@ -165,7 +166,20 @@ async function addTripMembers(tripId, members = [], userId) {
     ...memberWithUserInclude,
   });
 
-  return attachInvitedMembersToTrip(trip, members);
+  const result = await attachInvitedMembersToTrip(trip, members);
+
+  // Notify the group about new members
+  notificationService.sendToGroup(
+    tripId,
+    {
+      title: 'Members Added',
+      body: `New members were added to the group`,
+      data: { type: 'members_added', groupId: tripId },
+    },
+    userId
+  );
+
+  return result;
 }
 
 async function removeTripMember(tripId, memberId, userId) {
@@ -226,6 +240,13 @@ async function removeTripMember(tripId, memberId, userId) {
 
   await prisma.groupMember.delete({
     where: { id: membership.id },
+  });
+
+  // Notify the removed member
+  notificationService.sendToUser(memberId, {
+    title: 'Removed from Group',
+    body: 'You were removed from a group',
+    data: { type: 'removed_from_group', groupId: tripId },
   });
 
   return {

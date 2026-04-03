@@ -4,6 +4,7 @@ const groupService = require("../services/groupService");
 const tripService = require("../services/tripService");
 const authMiddleware = require("../middleware/authMiddleware");
 const groupController = require("../controllers/groupController");
+const notificationService = require("../services/notificationService");
 const upload = require("../utils/mediaUpload");
 
 const router = express.Router();
@@ -357,6 +358,17 @@ router.put("/:groupId", async (req, res) => {
       data: updatedGroup,
       message: "Group updated successfully",
     });
+
+    // Notify group members about the update (fire-and-forget after response)
+    notificationService.sendToGroup(
+      groupId,
+      {
+        title: 'Group Updated',
+        body: `Group settings were updated`,
+        data: { type: 'group_updated', groupId },
+      },
+      req.userId
+    );
   } catch (error) {
     const status = error.message === "Group not found"
       ? 404
@@ -381,6 +393,19 @@ router.post("/:groupId/leave", async (req, res) => {
       data: result,
       message: "Leave trip action completed successfully",
     });
+
+    // Notify remaining members unless the group was deleted
+    if (!result.deletedTrip) {
+      notificationService.sendToGroup(
+        groupId,
+        {
+          title: 'Member Left',
+          body: 'A member left the group',
+          data: { type: 'member_left', groupId },
+        },
+        req.userId
+      );
+    }
   } catch (error) {
     const status = error.message === "Trip not found" ? 404 : 400;
     res.status(status).json({
@@ -412,6 +437,17 @@ router.post("/join", async (req, res) => {
       data: result,
       message: "Successfully joined group",
     });
+
+    // Notify existing group members
+    notificationService.sendToGroup(
+      result.groupId,
+      {
+        title: 'New Member',
+        body: `${participantName} joined the group`,
+        data: { type: 'member_joined', groupId: result.groupId },
+      },
+      req.userId
+    );
   } catch (error) {
     if (error.message.includes("Invite link expired")) {
       return res.status(400).json({
@@ -467,6 +503,17 @@ router.delete("/:groupId", async (req, res) => {
       data: result,
       message: "Group deleted permanently",
     });
+
+    // Notify group members about deletion
+    notificationService.sendToGroup(
+      groupId,
+      {
+        title: 'Group Deleted',
+        body: `${result.title} was deleted`,
+        data: { type: 'group_deleted', groupId },
+      },
+      req.userId
+    );
   } catch (error) {
     if (error.message.includes("not found")) {
       return res.status(404).json({

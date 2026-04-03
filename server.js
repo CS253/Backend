@@ -15,6 +15,7 @@ const expenseRoutes = require("./routes/expenseRoutes");
 const userRoutes = require("./routes/userRoutes");
 const settlementRoutes = require("./routes/settlementRoutes");
 const routePlannerRoutes = require("./routes/routePlannerRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 initFirebase();
 
@@ -36,6 +37,7 @@ app.use("/api", userRoutes);
 app.use("/api", expenseRoutes);
 app.use("/api", settlementRoutes);
 app.use("/api/route-planner", routePlannerRoutes);
+app.use("/api", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Travelly API is running..." });
