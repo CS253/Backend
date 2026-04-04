@@ -153,6 +153,36 @@ router.put('/groups/:groupId/expenses/:expenseId', async (req, res) => {
 });
 
 /**
+ * PATCH /groups/:groupId/expenses/:expenseId
+ * Partial expense update — only provided fields are changed.
+ */
+router.patch('/groups/:groupId/expenses/:expenseId', async (req, res) => {
+  try {
+    const { groupId, expenseId } = req.params;
+    const { title, amount, paidBy, currency, split, notes, date } = req.body;
+
+    const updatedExpense = await expenseService.updateExpense(expenseId, {
+      groupId,
+      ...(title !== undefined && { title }),
+      ...(amount !== undefined && { amount: parseFloat(amount) }),
+      ...(paidBy !== undefined && { paidBy }),
+      ...(currency !== undefined && { currency }),
+      ...(split !== undefined && { split }),
+      ...(notes !== undefined && { notes }),
+      ...(date !== undefined && { date }),
+    });
+
+    res.json({
+      success: true,
+      data: updatedExpense,
+      message: 'Expense updated successfully',
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * DELETE /groups/:groupId/expenses/:expenseId
  * Delete an expense and its splits
  */

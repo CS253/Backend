@@ -1,6 +1,7 @@
 const path = require("path");
 const prisma = require("../utils/prismaClient");
 const mediaStorage = require("../utils/mediaStorage");
+const notificationService = require("./notificationService");
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_TYPES = {
@@ -340,10 +341,23 @@ exports.uploadMedia = async ({ userId, groupId, requestedType, responseVariant, 
     throw error;
   }
 
-  return {
+  const result = {
     message: "Media uploaded successfully",
     data: createdMedia.map((item) => serializeMedia(item, responseVariant))
   };
+
+  // Notify group members about the upload
+  notificationService.sendToGroup(
+    groupId,
+    {
+      title: 'New Upload',
+      body: `New ${requestedType || 'media'} was uploaded`,
+      data: { type: 'media_uploaded', groupId },
+    },
+    userId
+  );
+
+  return result;
 };
 
 exports.deleteSingleMedia = async ({ userId, id, mediaType }) => {
