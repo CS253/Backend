@@ -20,7 +20,9 @@ model User {
   splits        ExpenseSplit[]
   createdGroups Group[]
   groups        GroupMember[]
-  uploadedMedia Media[]        @relation("UploadedMedia")
+  uploadedMedia        Media[]        @relation("UploadedMedia")
+  notificationsEnabled Boolean        @default(true)
+  fcmTokens            FcmToken[]
 }
 
 model Group {
@@ -126,4 +128,14 @@ model Media {
   uploader   User     @relation("UploadedMedia", fields: [uploadedBy], references: [id])
 
   @@index([groupId, mediaType, createdAt])
+}
+
+model FcmToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

@@ -1,4 +1,5 @@
 const prisma = require('../utils/prismaClient');
+const notificationService = require('./notificationService');
 
 /**
  * Create an expense with automatic split calculation
@@ -119,10 +120,20 @@ async function createExpense(data) {
     splits.push(splitRecord);
   }
 
-  return {
-    ...expense,
-    splits,
-  };
+  const result = { ...expense, splits };
+
+  // Send push notification to group members
+  notificationService.sendToGroup(
+    groupId,
+    {
+      title: 'New Expense',
+      body: `New expense: ${title} — ${expenseCurrency} ${amount}`,
+      data: { type: 'expense_created', expenseId: expense.id, groupId },
+    },
+    paidBy
+  );
+
+  return result;
 }
 
 /**
@@ -323,10 +334,19 @@ async function updateExpense(expenseId, data) {
     splits.push(splitRecord);
   }
 
-  return {
-    ...updatedExpense,
-    splits,
-  };
+  const result = { ...updatedExpense, splits };
+
+  notificationService.sendToGroup(
+    updatedExpense.groupId,
+    {
+      title: 'Expense Updated',
+      body: `Expense updated: ${updatedExpense.title}`,
+      data: { type: 'expense_updated', expenseId: updatedExpense.id, groupId: updatedExpense.groupId },
+    },
+    updatedExpense.paidBy
+  );
+
+  return result;
 }
 
 /**
@@ -344,6 +364,16 @@ async function deleteExpense(expenseId) {
   const expense = await prisma.expense.delete({
     where: { id: expenseId },
   });
+
+  notificationService.sendToGroup(
+    expense.groupId,
+    {
+      title: 'Expense Deleted',
+      body: `Expense deleted: ${expense.title}`,
+      data: { type: 'expense_deleted', groupId: expense.groupId },
+    },
+    expense.paidBy
+  );
 
   return expense;
 }

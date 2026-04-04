@@ -2,6 +2,7 @@ const express = require('express');
 const settlementService = require('../services/settlementService');
 const authMiddleware = require('../middleware/authMiddleware');
 const prisma = require('../utils/prismaClient');
+const notificationService = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -124,6 +125,13 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       currency
     );
 
+    // Notify the creditor that payment was received
+    notificationService.sendToUser(toUserId, {
+      title: 'Payment Received',
+      body: `You received ${currency} ${amount} for a settlement`,
+      data: { type: 'settlement_paid', groupId, fromUserId, amount: String(amount) },
+    });
+
     return res.status(201).json({
       success: true,
       data: transaction,
@@ -148,6 +156,13 @@ router.post('/groups/:groupId/settlements/request-payment', async (req, res) => 
       });
     }
 
+    // Notify the debtor about the payment request
+    notificationService.sendToUser(fromUserId, {
+      title: 'Payment Requested',
+      body: `You have a payment request of ${currency} ${amount}`,
+      data: { type: 'payment_requested', groupId: req.params.groupId, toUserId, amount: String(amount) },
+    });
+
     return res.json({
       success: true,
       data: {
@@ -157,7 +172,7 @@ router.post('/groups/:groupId/settlements/request-payment', async (req, res) => 
         currency,
         requestedAt: new Date(),
       },
-      message: 'Payment request sent to debtor (notification would be sent in production)',
+      message: 'Payment request sent to debtor',
     });
   } catch (error) {
     return res.status(400).json({
