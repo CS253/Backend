@@ -181,6 +181,15 @@ router.put('/users/me', authMiddleware, async (req, res) => {
 
     if (upiId !== undefined) {
       const trimmedUpiId = typeof upiId === 'string' ? upiId.trim() : '';
+      if (trimmedUpiId) {
+        const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z0-9]{2,64}$/;
+        if (!upiRegex.test(trimmedUpiId)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid UPI ID format',
+          });
+        }
+      }
       updateData.upiId = trimmedUpiId || null;
     }
 

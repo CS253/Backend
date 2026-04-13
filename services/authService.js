@@ -28,15 +28,20 @@ async function verifyIdTokenCached(idToken) {
     return cached.decodedToken;
   }
 
-  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
 
-  if (_tokenCache.size >= TOKEN_CACHE_MAX_SIZE) {
-    const firstKey = _tokenCache.keys().next().value;
-    _tokenCache.delete(firstKey);
+    if (_tokenCache.size >= TOKEN_CACHE_MAX_SIZE) {
+      const firstKey = _tokenCache.keys().next().value;
+      _tokenCache.delete(firstKey);
+    }
+
+    _tokenCache.set(cacheKey, { decodedToken, timestamp: Date.now() });
+    return decodedToken;
+  } catch (error) {
+    console.error("Firebase verifyIdToken error:", error.message);
+    throw error;
   }
-
-  _tokenCache.set(cacheKey, { decodedToken, timestamp: Date.now() });
-  return decodedToken;
 }
 
 // ── In-memory cache for user lookups by firebaseUid ───────────────────
@@ -113,7 +118,13 @@ async function syncFirebaseUser({
     throw new Error("ID token is required");
   }
 
-  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  let decodedToken;
+  try {
+    decodedToken = await admin.auth().verifyIdToken(idToken);
+  } catch (error) {
+    console.error("Firebase sync syncFirebaseUser verifyIdToken error:", error.message);
+    throw error;
+  }
   const { uid, email, name: tokenName, phone_number: tokenPhoneNumber } = decodedToken;
 
   if (!email) {
