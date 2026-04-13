@@ -2,6 +2,7 @@ const path = require("path");
 const prisma = require("../utils/prismaClient");
 const geoip = require("geoip-lite");
 const mediaStorage = require("../utils/mediaStorage");
+const { lastTenDigits } = require("../utils/phone");
 
 const MAX_GROUP_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_GROUP_PHOTO_TYPES = new Set([
@@ -131,6 +132,19 @@ const normalizePreAddedParticipants = (participants = []) => {
     .filter(Boolean);
 };
 
+const getPendingParticipantPhoneSuffixes = (participants = []) => {
+  const suffixes = new Set();
+
+  for (const participant of normalizePreAddedParticipants(participants)) {
+    const suffix = lastTenDigits(participant.phone);
+    if (suffix) {
+      suffixes.add(suffix);
+    }
+  }
+
+  return Array.from(suffixes);
+};
+
 const getCurrencyFromIP = (ip) => {
   try {
     const cleanIp = ip.replace(/::ffff:/, "");
@@ -258,7 +272,8 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
       createdBy,
       inviteLink,
       inviteLinkStatus: "ACTIVE",
-      preAddedParticipants: Array.isArray(preAddedParticipants) ? preAddedParticipants : []
+      preAddedParticipants: normalizedParticipants,
+      pendingParticipantPhoneSuffixes: getPendingParticipantPhoneSuffixes(normalizedParticipants)
     }
   });
 
@@ -346,7 +361,8 @@ const joinGroupByInviteLink = async (inviteLink, userId, participantName) => {
     await prisma.group.update({
       where: { id: group.id },
       data: {
-        preAddedParticipants: remainingParticipants
+        preAddedParticipants: remainingParticipants,
+        pendingParticipantPhoneSuffixes: getPendingParticipantPhoneSuffixes(remainingParticipants)
       }
     });
   }
@@ -542,6 +558,7 @@ const handleControllerError = (res, error) => {
 module.exports = {
   getCurrencyFromIP,
   normalizePreAddedParticipants,
+  getPendingParticipantPhoneSuffixes,
   createGroupWithParticipants,
   joinGroupByInviteLink,
   deleteGroup,

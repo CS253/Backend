@@ -343,6 +343,7 @@ async function removeTripMember(tripId, memberId, userId) {
       where: { id: tripId },
       data: {
         preAddedParticipants: remainingParticipants,
+        pendingParticipantPhoneSuffixes: groupService.getPendingParticipantPhoneSuffixes(remainingParticipants),
       },
     });
 

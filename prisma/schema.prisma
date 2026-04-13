@@ -35,6 +35,7 @@ model Group {
   simplifyDebts        Boolean       @default(false)
   inviteLinkStatus     String        @default("ACTIVE")
   preAddedParticipants Json          @default("[]")
+  pendingParticipantPhoneSuffixes String[] @default([])
   destination          String        @default("")
   startDate            DateTime      @default(now())
   endDate              DateTime      @default(now())
@@ -48,6 +49,8 @@ model Group {
   media                Media[]
   settlements          Settlement[]
   transactions         Transaction[]
+
+  @@index([pendingParticipantPhoneSuffixes], type: Gin)
 }
 
 model GroupMember {

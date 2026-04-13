@@ -6,6 +6,7 @@ const {
   PHONE_NUMBER_IN_USE_ERROR,
 } = require('../services/authService');
 const { admin } = require('../services/firebaseAdmin');
+const { lastTenDigits } = require('../utils/phone');
 
 
 const router = express.Router();
@@ -163,11 +164,7 @@ router.put('/users/me', authMiddleware, async (req, res) => {
       const trimmedPhone = typeof phoneNumber === 'string' ? phoneNumber.trim() : '';
 
       if (trimmedPhone) {
-        const normalizedPhone = trimmedPhone.replace(/\D/g, '');
-        const phoneSuffix =
-          normalizedPhone.length > 10
-            ? normalizedPhone.substring(normalizedPhone.length - 10)
-            : normalizedPhone;
+        const phoneSuffix = lastTenDigits(trimmedPhone);
 
         const existingUser = phoneSuffix
           ? await prisma.user.findFirst({

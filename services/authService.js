@@ -1,6 +1,7 @@
 const prisma = require("../utils/prismaClient");
 const { admin } = require("./firebaseAdmin");
 const { claimPendingParticipantsForUser } = require("./memberInviteService");
+const { lastTenDigits } = require("../utils/phone");
 
 const PHONE_NUMBER_IN_USE_ERROR = "An account already exists with this phone number";
 
@@ -137,11 +138,7 @@ async function syncFirebaseUser({
       : (user?.phoneNumber || tokenPhoneNumber || null);
 
   if (finalPhoneNumber && (finalPhoneNumber !== user?.phoneNumber)) {
-    const normalizedRequestedPhone = finalPhoneNumber.replace(/\D/g, "");
-    const requestedSuffix =
-      normalizedRequestedPhone.length > 10
-        ? normalizedRequestedPhone.slice(-10)
-        : normalizedRequestedPhone;
+    const requestedSuffix = lastTenDigits(finalPhoneNumber);
 
     const conflictingUser = requestedSuffix
       ? await prisma.user.findFirst({
