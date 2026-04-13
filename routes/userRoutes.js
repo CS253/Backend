@@ -5,6 +5,8 @@ const {
   syncFirebaseUser,
   PHONE_NUMBER_IN_USE_ERROR,
 } = require('../services/authService');
+const { admin } = require('../services/firebaseAdmin');
+
 
 const router = express.Router();
 
@@ -208,6 +210,19 @@ router.put('/users/me', authMiddleware, async (req, res) => {
         createdAt: true,
       },
     });
+
+    // Sync name to Firebase if updated
+    if (updateData.name && req.firebaseUid) {
+      try {
+        await admin.auth().updateUser(req.firebaseUid, {
+          displayName: updateData.name,
+        });
+      } catch (fbError) {
+        console.error('Error syncing name to Firebase:', fbError);
+        // We don't fail the request if Firebase sync fails,
+        // but it's good to log.
+      }
+    }
 
     return res.json({
       success: true,

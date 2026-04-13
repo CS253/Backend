@@ -120,23 +120,23 @@ async function syncFirebaseUser({
     throw new Error("Authenticated Firebase user is missing an email");
   }
 
-  const finalName =
-    typeof providedName === "string" && providedName.trim() !== ""
-      ? providedName.trim()
-      : tokenName || email.split("@")[0];
-
-  const finalPhoneNumber =
-    typeof providedPhoneNumber === "string" && providedPhoneNumber.trim() !== ""
-      ? providedPhoneNumber.trim()
-      : tokenPhoneNumber || null;
-
   let user = await prisma.user.findFirst({
     where: {
       OR: [{ firebaseUid: uid }, { email }]
     }
   });
 
-  if (finalPhoneNumber) {
+  const finalName =
+    typeof providedName === "string" && providedName.trim() !== ""
+      ? providedName.trim()
+      : (user?.name || tokenName || email.split("@")[0]);
+
+  const finalPhoneNumber =
+    typeof providedPhoneNumber === "string" && providedPhoneNumber.trim() !== ""
+      ? providedPhoneNumber.trim()
+      : (user?.phoneNumber || tokenPhoneNumber || null);
+
+  if (finalPhoneNumber && (finalPhoneNumber !== user?.phoneNumber)) {
     const normalizedRequestedPhone = finalPhoneNumber.replace(/\D/g, "");
     const requestedSuffix =
       normalizedRequestedPhone.length > 10
@@ -167,11 +167,12 @@ async function syncFirebaseUser({
       data: {
         firebaseUid: uid,
         email,
-        ...(finalName ? { name: finalName } : {}),
-        ...(finalPhoneNumber ? { phoneNumber: finalPhoneNumber } : {}),
+        name: finalName,
+        phoneNumber: finalPhoneNumber,
       }
     });
   } else {
+
     user = await prisma.user.create({
       data: {
         firebaseUid: uid,
