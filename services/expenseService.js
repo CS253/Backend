@@ -1,5 +1,6 @@
 const prisma = require('../utils/prismaClient');
 const notificationService = require('./notificationService');
+const { VALID_CURRENCIES } = require('../utils/constants');
 
 /**
  * Create an expense with automatic split calculation
@@ -27,7 +28,6 @@ async function createExpense(data) {
 
   // vuln-34 fix: validate currency code if provided
   if (currency) {
-    const VALID_CURRENCIES = ['INR','USD','GBP','EUR','CAD','AUD','JPY','CNY','CHF','SGD','NOK','DKK','CZK','HUF','RON'];
     if (!VALID_CURRENCIES.includes(currency)) {
       throw new Error(`Invalid currency code: ${currency}`);
     }
@@ -270,6 +270,11 @@ async function updateExpense(expenseId, data) {
   const updatedTitle = title !== undefined ? title : existingExpense.title;
   const updatedAmount = amount !== undefined ? amount : existingExpense.amount;
   const updatedPaidBy = paidBy !== undefined ? paidBy : existingExpense.paidBy;
+  
+  // Validate currency if provided in update
+  if (currency !== undefined && !VALID_CURRENCIES.includes(currency)) {
+    throw new Error(`Invalid currency code: ${currency}`);
+  }
   const updatedCurrency = currency !== undefined ? currency : existingExpense.currency;
   const updatedNotes = notes !== undefined ? notes : existingExpense.notes;
   const updatedDate = date !== undefined ? new Date(date) : existingExpense.date;

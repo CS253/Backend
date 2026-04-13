@@ -2,6 +2,7 @@ const path = require("path");
 const prisma = require("../utils/prismaClient");
 const geoip = require("geoip-lite");
 const mediaStorage = require("../utils/mediaStorage");
+const { VALID_CURRENCIES } = require("./../utils/constants");
 const { lastTenDigits } = require("../utils/phone");
 
 const MAX_GROUP_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
@@ -255,6 +256,10 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
 
   if (parsedEndDate < parsedStartDate) {
     throw new Error("End date must be after or equal to start date");
+  }
+
+  if (currency && !VALID_CURRENCIES.includes(currency)) {
+    throw new Error(`Invalid currency code: ${currency}`);
   }
 
   const finalCurrency = currency || getCurrencyFromIP(clientIp);
