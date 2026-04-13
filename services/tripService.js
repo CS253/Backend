@@ -184,8 +184,7 @@ async function getTripSummaries(userId) {
  * Partial update — only updates fields that are explicitly provided.
  */
 async function patchTrip(groupId, userId, fields) {
-  const membership = await prisma.groupMember.findFirst({ where: { groupId, userId } });
-  if (!membership) throw new Error('Group not found or access denied');
+  await ensureTripCreator(groupId, userId);
 
   // ── Optimistic Locking ──────────────────────────────────────────────────────
   // If the client sends updatedAt, verify it matches the DB version.
@@ -229,6 +228,14 @@ async function patchTrip(groupId, userId, fields) {
         const d = new Date(fields[key]);
         if (isNaN(d.getTime())) throw new Error(`Invalid date for ${key}`);
         data[key] = d;
+      } else if (key === 'title') {
+        const trimmedTitle = String(fields[key]).trim();
+        if (!trimmedTitle) {
+          const err = new Error("Title cannot be whitespace-only");
+          err.statusCode = 400;
+          throw err;
+        }
+        data[key] = trimmedTitle;
       } else {
         data[key] = fields[key];
       }
@@ -336,6 +343,7 @@ async function removeTripMember(tripId, memberId, userId) {
       where: { id: tripId },
       data: {
         preAddedParticipants: remainingParticipants,
+        pendingParticipantPhoneSuffixes: groupService.getPendingParticipantPhoneSuffixes(remainingParticipants),
       },
     });
 

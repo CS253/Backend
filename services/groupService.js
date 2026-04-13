@@ -2,6 +2,8 @@ const path = require("path");
 const prisma = require("../utils/prismaClient");
 const geoip = require("geoip-lite");
 const mediaStorage = require("../utils/mediaStorage");
+const { VALID_CURRENCIES } = require("./../utils/constants");
+const { lastTenDigits } = require("../utils/phone");
 
 const MAX_GROUP_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_GROUP_PHOTO_TYPES = new Set([
@@ -131,6 +133,19 @@ const normalizePreAddedParticipants = (participants = []) => {
     .filter(Boolean);
 };
 
+const getPendingParticipantPhoneSuffixes = (participants = []) => {
+  const suffixes = new Set();
+
+  for (const participant of normalizePreAddedParticipants(participants)) {
+    const suffix = lastTenDigits(participant.phone);
+    if (suffix) {
+      suffixes.add(suffix);
+    }
+  }
+
+  return Array.from(suffixes);
+};
+
 const getCurrencyFromIP = (ip) => {
   try {
     const cleanIp = ip.replace(/::ffff:/, "");
@@ -145,6 +160,22 @@ const getCurrencyFromIP = (ip) => {
 
   return "INR";
 };
+
+async function ensureGroupCreator(userId, groupId) {
+  const group = await prisma.group.findUnique({
+    where: { id: groupId }
+  });
+
+  if (!group) {
+    throw new AppError(404, "Group not found");
+  }
+
+  if (group.createdBy !== userId) {
+    throw new AppError(403, "Only the group creator can perform this action");
+  }
+
+  return group;
+}
 
 async function ensureGroupMember(userId, groupId) {
   const [group, membership] = await Promise.all([
@@ -201,9 +232,11 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
     coverImage = null
   } = groupData;
 
-  if (!title || !createdBy) {
-    throw new Error("Title and createdBy are required");
+  if (!title || !title.trim() || !createdBy) {
+    throw new Error("Title (cannot be whitespace-only) and createdBy are required");
   }
+  
+  const trimmedTitle = title.trim();
 
   const normalizedParticipants = normalizePreAddedParticipants(preAddedParticipants);
 
@@ -225,12 +258,16 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
     throw new Error("End date must be after or equal to start date");
   }
 
+  if (currency && !VALID_CURRENCIES.includes(currency)) {
+    throw new Error(`Invalid currency code: ${currency}`);
+  }
+
   const finalCurrency = currency || getCurrencyFromIP(clientIp);
   const inviteLink = `invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   const group = await prisma.group.create({
     data: {
-      title,
+      title: trimmedTitle,
       destination: destination || "",
       startDate: parsedStartDate,
       endDate: parsedEndDate,
@@ -240,7 +277,8 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
       createdBy,
       inviteLink,
       inviteLinkStatus: "ACTIVE",
-      preAddedParticipants: Array.isArray(preAddedParticipants) ? preAddedParticipants : []
+      preAddedParticipants: normalizedParticipants,
+      pendingParticipantPhoneSuffixes: getPendingParticipantPhoneSuffixes(normalizedParticipants)
     }
   });
 
@@ -328,7 +366,8 @@ const joinGroupByInviteLink = async (inviteLink, userId, participantName) => {
     await prisma.group.update({
       where: { id: group.id },
       data: {
-        preAddedParticipants: remainingParticipants
+        preAddedParticipants: remainingParticipants,
+        pendingParticipantPhoneSuffixes: getPendingParticipantPhoneSuffixes(remainingParticipants)
       }
     });
   }
@@ -405,7 +444,7 @@ const getGroupPhoto = async ({ userId, groupId }) => {
 };
 
 const upsertGroupPhoto = async ({ userId, groupId, file }) => {
-  const group = await ensureGroupMember(userId, groupId);
+  const group = await ensureGroupCreator(userId, groupId);
   const mimeType = resolveGroupPhotoMimeType(file);
 
   if (!file) {
@@ -461,7 +500,7 @@ const upsertGroupPhoto = async ({ userId, groupId, file }) => {
 };
 
 const deleteGroupPhoto = async ({ userId, groupId }) => {
-  const group = await ensureGroupMember(userId, groupId);
+  const group = await ensureGroupCreator(userId, groupId);
   const photoUrl = resolveGroupCoverImage(group);
 
   if (!photoUrl || !group.photoPath) {
@@ -524,6 +563,7 @@ const handleControllerError = (res, error) => {
 module.exports = {
   getCurrencyFromIP,
   normalizePreAddedParticipants,
+  getPendingParticipantPhoneSuffixes,
   createGroupWithParticipants,
   joinGroupByInviteLink,
   deleteGroup,

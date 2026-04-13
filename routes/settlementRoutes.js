@@ -97,12 +97,31 @@ router.get('/groups/:groupId/settlements', async (req, res) => {
 router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
   try {
     const { groupId } = req.params;
-    const { fromUserId, toUserId, amount, currency } = req.body;
+    const { toUserId, amount, currency } = req.body;
 
-    if (!fromUserId || !toUserId || !amount || !currency) {
+    // vuln-11 fix: fromUserId MUST be the authenticated user — not taken from body
+    const fromUserId = req.userId;
+
+    if (!toUserId || !amount || !currency) {
       return res.status(400).json({
         success: false,
-        error: 'fromUserId, toUserId, amount, and currency are required',
+        error: 'toUserId, amount, and currency are required',
+      });
+    }
+
+    // vuln-06 fix: prevent self-payment and negative amounts (double-spend guard)
+    if (fromUserId === toUserId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot mark a payment to yourself',
+      });
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'amount must be a positive number',
       });
     }
 
@@ -117,19 +136,28 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       });
     }
 
+    // Create reimbursement transaction (with deduplication)
     const transaction = await settlementService.markSettlementAsPaid(
       groupId,
       fromUserId,
       toUserId,
-      amount,
+      parsedAmount,
       currency
     );
+
+    if (transaction.duplicate) {
+      return res.status(409).json({
+        success: false,
+        error: 'Duplicate settlement: this settlement has already been marked as paid',
+        data: transaction,
+      });
+    }
 
     // Notify the creditor that payment was received
     notificationService.sendToUser(toUserId, {
       title: 'Payment Received',
-      body: `You received ${currency} ${amount} for a settlement`,
-      data: { type: 'settlement_paid', groupId, fromUserId, amount: String(amount) },
+      body: `You received ${currency} ${parsedAmount} for a settlement`,
+      data: { type: 'settlement_paid', groupId, fromUserId, amount: String(parsedAmount) },
     });
 
     return res.status(201).json({
@@ -205,7 +233,13 @@ router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) =>
       });
     }
 
-    const paymentLink = `upi://pay?pa=${recipient.upiId}&pn=${recipient.name}&am=${amount}&tn=Travelly%20Reimbursement`;
+    const { decrypt } = require('../utils/encryption');
+    const decodedUpiId = decrypt(recipient.upiId);
+    const encodedUpiId = encodeURIComponent(decodedUpiId);
+    const encodedName = encodeURIComponent(recipient.name || "Unknown");
+    const encodedNotes = encodeURIComponent("Travelly Reimbursement");
+    const encodedAmount = encodeURIComponent(amount);
+    const paymentLink = `upi://pay?pa=${encodedUpiId}&pn=${encodedName}&am=${encodedAmount}&tn=${encodedNotes}`;
 
     return res.json({
       success: true,
@@ -307,6 +341,15 @@ router.put('/groups/:groupId/settings/simplify-debts', async (req, res) => {
         success: false,
         error: 'simplifyDebts must be a boolean',
       });
+    }
+
+    // vuln-12 fix: only group creator can toggle this setting
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) {
+      return res.status(404).json({ success: false, error: 'Group not found' });
+    }
+    if (group.createdBy !== req.userId) {
+      return res.status(403).json({ success: false, error: 'Only the group creator can change this setting' });
     }
 
     const updatedGroup = await settlementService.updateSimplifyDebtsSetting(

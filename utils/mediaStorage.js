@@ -152,13 +152,17 @@ async function storeRemoteFile(storageKey, buffer) {
 }
 
 exports.saveFile = async ({ groupId, mediaType, generatedName, buffer, folderName }) => {
+  const { encryptBuffer } = require("./encryption");
   const storageKey = buildStorageKey({ groupId, mediaType, generatedName, folderName });
+  
+  // vuln-42 fix: encrypt the buffer before storage
+  const encryptedBuffer = encryptBuffer(buffer);
 
   if (getStorageDriver() === "sftp") {
-    return storeRemoteFile(storageKey, buffer);
+    return storeRemoteFile(storageKey, encryptedBuffer);
   }
 
-  return storeLocalFile(storageKey, buffer);
+  return storeLocalFile(storageKey, encryptedBuffer);
 };
 
 exports.deleteFile = async (filePath) => {

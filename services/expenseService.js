@@ -1,5 +1,6 @@
 const prisma = require('../utils/prismaClient');
 const notificationService = require('./notificationService');
+const { VALID_CURRENCIES } = require('../utils/constants');
 
 /**
  * Create an expense with automatic split calculation
@@ -23,6 +24,13 @@ async function createExpense(data) {
   // Validate required fields
   if (!groupId || !title || !amount || !paidBy) {
     throw new Error('Missing required fields: groupId, title, amount, paidBy');
+  }
+
+  // vuln-34 fix: validate currency code if provided
+  if (currency) {
+    if (!VALID_CURRENCIES.includes(currency)) {
+      throw new Error(`Invalid currency code: ${currency}`);
+    }
   }
 
   // Fetch group and get default currency if not specified
@@ -58,9 +66,15 @@ async function createExpense(data) {
       }
     }
     
-    const perPersonAmount = amount / participants.length;
+    const perPersonAmount = Math.floor((amount / participants.length) * 100) / 100;
+    let remainder = Math.round((amount - perPersonAmount * participants.length) * 100);
     participants.forEach((userId) => {
-      splitAmounts[userId] = parseFloat(perPersonAmount.toFixed(2));
+      if (remainder > 0) {
+        splitAmounts[userId] = parseFloat((perPersonAmount + 0.01).toFixed(2));
+        remainder--;
+      } else {
+        splitAmounts[userId] = perPersonAmount;
+      }
     });
   } else if (split.type === 'CUSTOM') {
     // Custom amounts per person
@@ -148,6 +162,9 @@ async function createExpense(data) {
  */
 async function getGroupExpenses(groupId, filters = {}) {
   const { fromDate, toDate, currency, userId } = filters;
+  // vuln-22 fix: enforce a hard page size cap to prevent DoS
+  const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 20, 1), 100);
 
   const where = {
     groupId,
@@ -175,7 +192,9 @@ async function getGroupExpenses(groupId, filters = {}) {
         select: { id: true, name: true, email: true },
       },
     },
-    orderBy: { date: 'desc' }, // Sort by transaction date descending (latest first)
+    orderBy: { date: 'desc' },
+    skip: (page - 1) * limit,
+    take: limit,
   });
 
   return expenses;
@@ -217,7 +236,7 @@ async function getExpense(expenseId) {
  * @returns {Object} Updated expense with splits
  */
 async function updateExpense(expenseId, data) {
-  const { title, amount, paidBy, currency, split, notes, date, groupId } = data;
+  const { title, amount, paidBy, currency, split, notes, date, groupId, userId } = data;
 
   // Get existing expense
   const existingExpense = await prisma.expense.findUnique({
@@ -227,6 +246,11 @@ async function updateExpense(expenseId, data) {
 
   if (!existingExpense) {
     throw new Error(`Expense with ID ${expenseId} not found`);
+  }
+
+  // IDOR check: Only the payer can modify the expense
+  if (userId && existingExpense.paidBy !== userId) {
+    throw new Error('Unauthorized: Only the user who paid for this expense can update it');
   }
 
   // Fetch group for validation
@@ -246,6 +270,11 @@ async function updateExpense(expenseId, data) {
   const updatedTitle = title !== undefined ? title : existingExpense.title;
   const updatedAmount = amount !== undefined ? amount : existingExpense.amount;
   const updatedPaidBy = paidBy !== undefined ? paidBy : existingExpense.paidBy;
+  
+  // Validate currency if provided in update
+  if (currency !== undefined && !VALID_CURRENCIES.includes(currency)) {
+    throw new Error(`Invalid currency code: ${currency}`);
+  }
   const updatedCurrency = currency !== undefined ? currency : existingExpense.currency;
   const updatedNotes = notes !== undefined ? notes : existingExpense.notes;
   const updatedDate = date !== undefined ? new Date(date) : existingExpense.date;
@@ -270,9 +299,15 @@ async function updateExpense(expenseId, data) {
       }
     }
     
-    const perPersonAmount = updatedAmount / participants.length;
+    const perPersonAmount = Math.floor((updatedAmount / participants.length) * 100) / 100;
+    let remainder = Math.round((updatedAmount - perPersonAmount * participants.length) * 100);
     participants.forEach((userId) => {
-      splitAmounts[userId] = parseFloat(perPersonAmount.toFixed(2));
+      if (remainder > 0) {
+        splitAmounts[userId] = parseFloat((perPersonAmount + 0.01).toFixed(2));
+        remainder--;
+      } else {
+        splitAmounts[userId] = perPersonAmount;
+      }
     });
   } else if (updatedSplit.type === 'CUSTOM') {
     if (!updatedSplit.splits || updatedSplit.splits.length === 0) {
@@ -354,7 +389,20 @@ async function updateExpense(expenseId, data) {
  * @param {string} expenseId - Expense ID
  * @returns {Object} Deleted expense
  */
-async function deleteExpense(expenseId) {
+async function deleteExpense(expenseId, userId) {
+  const existingExpense = await prisma.expense.findUnique({
+    where: { id: expenseId },
+  });
+
+  if (!existingExpense) {
+    throw new Error(`Expense with ID ${expenseId} not found`);
+  }
+
+  // IDOR check: Only the payer can delete the expense
+  if (userId && existingExpense.paidBy !== userId) {
+    throw new Error('Unauthorized: Only the user who paid for this expense can delete it');
+  }
+
   // Delete associated splits first
   await prisma.expenseSplit.deleteMany({
     where: { expenseId },

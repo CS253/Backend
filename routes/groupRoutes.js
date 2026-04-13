@@ -111,10 +111,10 @@ router.post("/", async (req, res) => {
 
     const resolvedTitle = title || name;
 
-    if (!resolvedTitle) {
+    if (!resolvedTitle || !resolvedTitle.trim()) {
       return res.status(400).json({
         success: false,
-        error: "Title is required",
+        error: "Title is required and cannot be whitespace-only",
       });
     }
 
@@ -318,11 +318,28 @@ router.put("/:groupId", async (req, res) => {
       });
     }
 
-    const group = await ensureGroupMembership(groupId, req.userId);
+    const group = await ensureGroupCreator(groupId, req.userId);
 
     const updateData = {};
-    if (resolvedTitle) updateData.title = resolvedTitle;
-    if (currency) updateData.currency = currency;
+    if (resolvedTitle) {
+      if (!resolvedTitle.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: "Title cannot be whitespace-only",
+        });
+      }
+      updateData.title = resolvedTitle.trim();
+    }
+    if (currency) {
+      const VALID_CURRENCIES = ['INR','USD','GBP','EUR','CAD','AUD','JPY','CNY','CHF','SGD','NOK','DKK','CZK','HUF','RON'];
+      if (!VALID_CURRENCIES.includes(currency)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid currency code. Allowed: ${VALID_CURRENCIES.join(', ')}`,
+        });
+      }
+      updateData.currency = currency;
+    }
     if (destination !== undefined) updateData.destination = destination;
     if (tripType !== undefined) updateData.tripType = tripType;
     if (coverImage !== undefined) updateData.coverImage = coverImage;

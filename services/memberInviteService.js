@@ -1,15 +1,6 @@
 const prisma = require('../utils/prismaClient');
 const groupService = require('./groupService');
-
-const normalizePhone = (phone) => {
-  if (typeof phone !== 'string') return '';
-  return phone.replace(/\D/g, '');
-};
-
-const lastTenDigits = (phone) => {
-  const digits = normalizePhone(phone);
-  return digits.length > 10 ? digits.slice(-10) : digits;
-};
+const { lastTenDigits, normalizePhone } = require('../utils/phone');
 
 const phonesMatch = (invitePhone, userPhone) => {
   const inviteDigits = lastTenDigits(invitePhone);
@@ -54,14 +45,34 @@ const claimPendingParticipantsForUser = async (user) => {
     return { claimedGroups: 0, claimedParticipants: 0 };
   }
 
+  const phoneSuffix = lastTenDigits(user.phoneNumber);
+  if (!phoneSuffix) {
+    return { claimedGroups: 0, claimedParticipants: 0 };
+  }
+
   const groups = await prisma.group.findMany({
+    where: {
+      pendingParticipantPhoneSuffixes: {
+        has: phoneSuffix,
+      },
+    },
     include: {
-      members: true,
+      members: {
+        where: {
+          userId: user.id,
+        },
+        select: {
+          id: true,
+          userId: true,
+        },
+      },
     },
   });
 
   let claimedGroups = 0;
   let claimedParticipants = 0;
+  const membershipRowsToCreate = [];
+  const updates = [];
 
   for (const group of groups) {
     const participants = groupService.normalizePreAddedParticipants(group.preAddedParticipants);
@@ -77,24 +88,42 @@ const claimPendingParticipantsForUser = async (user) => {
       continue;
     }
 
-    const isAlreadyMember = group.members.some((member) => member.userId === user.id);
+    const isAlreadyMember = group.members.length > 0;
     if (!isAlreadyMember) {
-      await createMembershipIfMissing(group.id, user.id);
+      membershipRowsToCreate.push({
+        groupId: group.id,
+        userId: user.id,
+      });
     }
 
     const remainingParticipants = participants.filter(
       (participant) => !phonesMatch(participant.phone, user.phoneNumber)
     );
 
-    await prisma.group.update({
+    updates.push(prisma.group.update({
       where: { id: group.id },
       data: {
         preAddedParticipants: remainingParticipants,
+        pendingParticipantPhoneSuffixes: groupService.getPendingParticipantPhoneSuffixes(remainingParticipants),
       },
-    });
+    }));
 
     claimedGroups += 1;
     claimedParticipants += matchingParticipants.length;
+  }
+
+  if (membershipRowsToCreate.length > 0 || updates.length > 0) {
+    await prisma.$transaction([
+      ...(membershipRowsToCreate.length > 0
+        ? [
+            prisma.groupMember.createMany({
+              data: membershipRowsToCreate,
+              skipDuplicates: true,
+            }),
+          ]
+        : []),
+      ...updates,
+    ]);
   }
 
   return { claimedGroups, claimedParticipants };
@@ -189,6 +218,7 @@ const attachInvitedMembersToTrip = async (trip, members = []) => {
       where: { id: trip.id },
       data: {
         preAddedParticipants: updatedParticipants,
+        pendingParticipantPhoneSuffixes: groupService.getPendingParticipantPhoneSuffixes(updatedParticipants),
       },
     });
   }

@@ -236,6 +236,32 @@ function greedyAlgorithm(balances) {
  * @returns {Object} Created expense record (reimbursement)
  */
 async function markSettlementAsPaid(groupId, fromUserId, toUserId, amount, currency) {
+  const DEDUP_WINDOW_SECONDS = 60;
+
+  // Time-window deduplication: reject identical reimbursements created within the last 60s
+  const deduplicationCutoff = new Date(Date.now() - DEDUP_WINDOW_SECONDS * 1000);
+
+  const existingReimbursement = await prisma.expense.findFirst({
+    where: {
+      groupId,
+      paidBy: fromUserId,
+      amount,
+      currency,
+      title: { startsWith: 'Reimbursement:' },
+      createdAt: { gte: deduplicationCutoff },
+      splits: {
+        some: {
+          userId: toUserId,
+        },
+      },
+    },
+    include: { splits: true },
+  });
+
+  if (existingReimbursement) {
+    return { ...existingReimbursement, duplicate: true };
+  }
+
   // Create a reimbursement as an expense where:
   // - fromUserId is the payer (they're paying back)
   // - toUserId is in the split (they're the creditor receiving payment)

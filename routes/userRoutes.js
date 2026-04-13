@@ -5,6 +5,9 @@ const {
   syncFirebaseUser,
   PHONE_NUMBER_IN_USE_ERROR,
 } = require('../services/authService');
+const { admin } = require('../services/firebaseAdmin');
+const { lastTenDigits } = require('../utils/phone');
+
 
 const router = express.Router();
 
@@ -116,6 +119,11 @@ router.get('/users/me', authMiddleware, async (req, res) => {
       });
     }
 
+    if (user.upiId) {
+      const { decrypt } = require('../utils/encryption');
+      user.upiId = decrypt(user.upiId);
+    }
+
     return res.json({
       success: true,
       data: user,
@@ -142,6 +150,13 @@ router.put('/users/me', authMiddleware, async (req, res) => {
           error: 'Name is required',
         });
       }
+      const nameRegex = /^[a-zA-Z0-9\s.\-']+$/;
+      if (!nameRegex.test(trimmedName)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Name contains invalid characters',
+        });
+      }
       updateData.name = trimmedName;
     }
 
@@ -149,11 +164,7 @@ router.put('/users/me', authMiddleware, async (req, res) => {
       const trimmedPhone = typeof phoneNumber === 'string' ? phoneNumber.trim() : '';
 
       if (trimmedPhone) {
-        const normalizedPhone = trimmedPhone.replace(/\D/g, '');
-        const phoneSuffix =
-          normalizedPhone.length > 10
-            ? normalizedPhone.substring(normalizedPhone.length - 10)
-            : normalizedPhone;
+        const phoneSuffix = lastTenDigits(trimmedPhone);
 
         const existingUser = phoneSuffix
           ? await prisma.user.findFirst({
@@ -190,7 +201,8 @@ router.put('/users/me', authMiddleware, async (req, res) => {
           });
         }
       }
-      updateData.upiId = trimmedUpiId || null;
+      const { encrypt } = require('../utils/encryption');
+      updateData.upiId = trimmedUpiId ? encrypt(trimmedUpiId) : null;
     }
 
     if (notificationsEnabled !== undefined) {
@@ -217,6 +229,24 @@ router.put('/users/me', authMiddleware, async (req, res) => {
         createdAt: true,
       },
     });
+
+    if (user.upiId) {
+      const { decrypt } = require('../utils/encryption');
+      user.upiId = decrypt(user.upiId);
+    }
+
+    // Sync name to Firebase if updated
+    if (updateData.name && req.firebaseUid) {
+      try {
+        await admin.auth().updateUser(req.firebaseUid, {
+          displayName: updateData.name,
+        });
+      } catch (fbError) {
+        console.error('Error syncing name to Firebase:', fbError);
+        // We don't fail the request if Firebase sync fails,
+        // but it's good to log.
+      }
+    }
 
     return res.json({
       success: true,
@@ -260,6 +290,11 @@ router.get('/users/:userId', authMiddleware, async (req, res) => {
         success: false,
         error: 'User not found',
       });
+    }
+
+    if (user.upiId) {
+      const { decrypt } = require('../utils/encryption');
+      user.upiId = decrypt(user.upiId);
     }
 
     return res.json({

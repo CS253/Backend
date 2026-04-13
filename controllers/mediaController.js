@@ -83,7 +83,26 @@ exports.downloadMedia = async (req, res) => {
       return res.redirect(file.redirectUrl);
     }
 
-    return res.download(file.absolutePath, file.fileName);
+    const fs = require('fs/promises');
+    const { decryptBuffer } = require('../utils/encryption');
+    
+    const buffer = await fs.readFile(file.absolutePath);
+    let finalBuffer = buffer;
+    try {
+      finalBuffer = decryptBuffer(buffer);
+    } catch (decryptErr) {
+      console.warn(`Decryption failed for ${file.absolutePath}, serving raw buffer.`);
+    }
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    const ext = file.fileName.split('.').pop().toLowerCase();
+    const mimeTypes = {
+      'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+      'gif': 'image/gif', 'pdf': 'application/pdf', 'webp': 'image/webp'
+    };
+    if (mimeTypes[ext]) res.setHeader('Content-Type', mimeTypes[ext]);
+    
+    return res.send(finalBuffer);
   } catch (error) {
     mediaService.handleControllerError(res, error);
   }
