@@ -235,9 +235,11 @@ router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) =>
 
     const { decrypt } = require('../utils/encryption');
     const decodedUpiId = decrypt(recipient.upiId);
+    const encodedUpiId = encodeURIComponent(decodedUpiId);
     const encodedName = encodeURIComponent(recipient.name || "Unknown");
     const encodedNotes = encodeURIComponent("Travelly Reimbursement");
-    const paymentLink = `upi://pay?pa=${decodedUpiId}&pn=${encodedName}&am=${amount}&tn=${encodedNotes}`;
+    const encodedAmount = encodeURIComponent(amount);
+    const paymentLink = `upi://pay?pa=${encodedUpiId}&pn=${encodedName}&am=${encodedAmount}&tn=${encodedNotes}`;
 
     return res.json({
       success: true,

@@ -149,6 +149,13 @@ router.put('/users/me', authMiddleware, async (req, res) => {
           error: 'Name is required',
         });
       }
+      const nameRegex = /^[a-zA-Z0-9\s.\-']+$/;
+      if (!nameRegex.test(trimmedName)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Name contains invalid characters',
+        });
+      }
       updateData.name = trimmedName;
     }
 
