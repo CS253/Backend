@@ -184,8 +184,7 @@ async function getTripSummaries(userId) {
  * Partial update — only updates fields that are explicitly provided.
  */
 async function patchTrip(groupId, userId, fields) {
-  const membership = await prisma.groupMember.findFirst({ where: { groupId, userId } });
-  if (!membership) throw new Error('Group not found or access denied');
+  await ensureTripCreator(groupId, userId);
 
   // ── Optimistic Locking ──────────────────────────────────────────────────────
   // If the client sends updatedAt, verify it matches the DB version.
