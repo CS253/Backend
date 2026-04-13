@@ -44,11 +44,19 @@ router.post('/groups/:groupId/expenses', async (req, res) => {
     const { groupId } = req.params;
     const { title, amount, paidBy, currency, split, notes, date } = req.body;
 
+    // vuln-26 fix: prevent auth impersonation — paidBy must be the authenticated user
+    if (paidBy && paidBy !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only record expenses where you are the payer',
+      });
+    }
+
     const expense = await expenseService.createExpense({
       groupId,
       title,
       amount: parseFloat(amount),
-      paidBy: paidBy || req.userId,
+      paidBy: req.userId, // always use the authenticated user's ID
       currency,
       split,
       notes,
@@ -75,6 +83,8 @@ router.post('/groups/:groupId/expenses', async (req, res) => {
 router.get('/groups/:groupId/expenses', async (req, res) => {
   try {
     const { groupId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
     const { fromDate, toDate, currency, paidBy } = req.query;
 
     const expenses = await expenseService.getGroupExpenses(groupId, {
@@ -82,6 +92,8 @@ router.get('/groups/:groupId/expenses', async (req, res) => {
       toDate,
       currency,
       userId: paidBy,
+      page,
+      limit,
     });
 
     res.json({
@@ -129,6 +141,7 @@ router.put('/groups/:groupId/expenses/:expenseId', async (req, res) => {
     const { title, amount, paidBy, currency, split, notes, date } = req.body;
 
     const updatedExpense = await expenseService.updateExpense(expenseId, {
+      userId: req.userId,
       groupId,
       title,
       amount: amount !== undefined ? parseFloat(amount) : undefined,
@@ -162,6 +175,7 @@ router.patch('/groups/:groupId/expenses/:expenseId', async (req, res) => {
     const { title, amount, paidBy, currency, split, notes, date } = req.body;
 
     const updatedExpense = await expenseService.updateExpense(expenseId, {
+      userId: req.userId,
       groupId,
       ...(title !== undefined && { title }),
       ...(amount !== undefined && { amount: parseFloat(amount) }),
@@ -190,7 +204,7 @@ router.delete('/groups/:groupId/expenses/:expenseId', async (req, res) => {
   try {
     const { expenseId } = req.params;
 
-    const deletedExpense = await expenseService.deleteExpense(expenseId);
+    const deletedExpense = await expenseService.deleteExpense(expenseId, req.userId);
 
     res.json({
       success: true,

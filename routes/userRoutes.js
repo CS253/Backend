@@ -118,6 +118,11 @@ router.get('/users/me', authMiddleware, async (req, res) => {
       });
     }
 
+    if (user.upiId) {
+      const { decrypt } = require('../utils/encryption');
+      user.upiId = decrypt(user.upiId);
+    }
+
     return res.json({
       success: true,
       data: user,
@@ -183,7 +188,17 @@ router.put('/users/me', authMiddleware, async (req, res) => {
 
     if (upiId !== undefined) {
       const trimmedUpiId = typeof upiId === 'string' ? upiId.trim() : '';
-      updateData.upiId = trimmedUpiId || null;
+      if (trimmedUpiId) {
+        const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z0-9]{2,64}$/;
+        if (!upiRegex.test(trimmedUpiId)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid UPI ID format',
+          });
+        }
+      }
+      const { encrypt } = require('../utils/encryption');
+      updateData.upiId = trimmedUpiId ? encrypt(trimmedUpiId) : null;
     }
 
     if (notificationsEnabled !== undefined) {
@@ -210,6 +225,11 @@ router.put('/users/me', authMiddleware, async (req, res) => {
         createdAt: true,
       },
     });
+
+    if (user.upiId) {
+      const { decrypt } = require('../utils/encryption');
+      user.upiId = decrypt(user.upiId);
+    }
 
     // Sync name to Firebase if updated
     if (updateData.name && req.firebaseUid) {
@@ -266,6 +286,11 @@ router.get('/users/:userId', authMiddleware, async (req, res) => {
         success: false,
         error: 'User not found',
       });
+    }
+
+    if (user.upiId) {
+      const { decrypt } = require('../utils/encryption');
+      user.upiId = decrypt(user.upiId);
     }
 
     return res.json({

@@ -54,7 +54,17 @@ const claimPendingParticipantsForUser = async (user) => {
     return { claimedGroups: 0, claimedParticipants: 0 };
   }
 
+  // vuln-25 fix: only load groups that actually have pre-added participants
+  // (Prisma JSON filter: preAddedParticipants array is non-empty)
   const groups = await prisma.group.findMany({
+    where: {
+      // Filter to groups where preAddedParticipants is not an empty array
+      NOT: {
+        preAddedParticipants: {
+          equals: []
+        }
+      }
+    },
     include: {
       members: true,
     },

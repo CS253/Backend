@@ -146,6 +146,22 @@ const getCurrencyFromIP = (ip) => {
   return "INR";
 };
 
+async function ensureGroupCreator(userId, groupId) {
+  const group = await prisma.group.findUnique({
+    where: { id: groupId }
+  });
+
+  if (!group) {
+    throw new AppError(404, "Group not found");
+  }
+
+  if (group.createdBy !== userId) {
+    throw new AppError(403, "Only the group creator can perform this action");
+  }
+
+  return group;
+}
+
 async function ensureGroupMember(userId, groupId) {
   const [group, membership] = await Promise.all([
     prisma.group.findUnique({
@@ -405,7 +421,7 @@ const getGroupPhoto = async ({ userId, groupId }) => {
 };
 
 const upsertGroupPhoto = async ({ userId, groupId, file }) => {
-  const group = await ensureGroupMember(userId, groupId);
+  const group = await ensureGroupCreator(userId, groupId);
   const mimeType = resolveGroupPhotoMimeType(file);
 
   if (!file) {
@@ -461,7 +477,7 @@ const upsertGroupPhoto = async ({ userId, groupId, file }) => {
 };
 
 const deleteGroupPhoto = async ({ userId, groupId }) => {
-  const group = await ensureGroupMember(userId, groupId);
+  const group = await ensureGroupCreator(userId, groupId);
   const photoUrl = resolveGroupCoverImage(group);
 
   if (!photoUrl || !group.photoPath) {
