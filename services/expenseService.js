@@ -66,12 +66,15 @@ async function createExpense(data) {
       }
     }
     
-    const perPersonAmount = Math.floor((amount * 100) / participants.length) / 100;
-    const totalDistributed = perPersonAmount * participants.length;
-    const remainder = parseFloat((amount - totalDistributed).toFixed(2));
-    
-    participants.forEach((userId, index) => {
-      splitAmounts[userId] = index === 0 ? parseFloat((perPersonAmount + remainder).toFixed(2)) : perPersonAmount;
+    const perPersonAmount = Math.floor((amount / participants.length) * 100) / 100;
+    let remainder = Math.round((amount - perPersonAmount * participants.length) * 100);
+    participants.forEach((userId) => {
+      if (remainder > 0) {
+        splitAmounts[userId] = parseFloat((perPersonAmount + 0.01).toFixed(2));
+        remainder--;
+      } else {
+        splitAmounts[userId] = perPersonAmount;
+      }
     });
   } else if (split.type === 'CUSTOM') {
     // Custom amounts per person
@@ -291,12 +294,15 @@ async function updateExpense(expenseId, data) {
       }
     }
     
-    const perPersonAmount = Math.floor((updatedAmount * 100) / participants.length) / 100;
-    const totalDistributed = perPersonAmount * participants.length;
-    const remainder = parseFloat((updatedAmount - totalDistributed).toFixed(2));
-    
-    participants.forEach((userId, index) => {
-      splitAmounts[userId] = index === 0 ? parseFloat((perPersonAmount + remainder).toFixed(2)) : perPersonAmount;
+    const perPersonAmount = Math.floor((updatedAmount / participants.length) * 100) / 100;
+    let remainder = Math.round((updatedAmount - perPersonAmount * participants.length) * 100);
+    participants.forEach((userId) => {
+      if (remainder > 0) {
+        splitAmounts[userId] = parseFloat((perPersonAmount + 0.01).toFixed(2));
+        remainder--;
+      } else {
+        splitAmounts[userId] = perPersonAmount;
+      }
     });
   } else if (updatedSplit.type === 'CUSTOM') {
     if (!updatedSplit.splits || updatedSplit.splits.length === 0) {
