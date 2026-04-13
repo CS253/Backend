@@ -217,9 +217,11 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
     coverImage = null
   } = groupData;
 
-  if (!title || !createdBy) {
-    throw new Error("Title and createdBy are required");
+  if (!title || !title.trim() || !createdBy) {
+    throw new Error("Title (cannot be whitespace-only) and createdBy are required");
   }
+  
+  const trimmedTitle = title.trim();
 
   const normalizedParticipants = normalizePreAddedParticipants(preAddedParticipants);
 
@@ -246,7 +248,7 @@ const createGroupWithParticipants = async (groupData, clientIp) => {
 
   const group = await prisma.group.create({
     data: {
-      title,
+      title: trimmedTitle,
       destination: destination || "",
       startDate: parsedStartDate,
       endDate: parsedEndDate,
