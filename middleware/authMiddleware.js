@@ -17,6 +17,7 @@ module.exports = async (req, res, next) => {
 
     next();
   } catch (error) {
+    console.error("AuthMiddleware error:", error.message);
     return res.status(401).json({
       error: error.message === "Access denied" ? "Access denied" : "Invalid token"
     });
