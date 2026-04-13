@@ -49,7 +49,10 @@ const fs = require('fs/promises');
 const pathModule = require('path');
 const { decryptBuffer } = require('./utils/encryption');
 
-app.use("/uploads", async (req, res, next) => {
+const authMiddleware = require("./middleware/authMiddleware");
+const prisma = require("./utils/prismaClient");
+
+app.use("/uploads", authMiddleware, async (req, res, next) => {
   try {
     // Prevent directory traversal
     if (req.path.includes('..')) return res.status(403).send('Forbidden');
@@ -59,6 +62,25 @@ app.use("/uploads", async (req, res, next) => {
     if (reqPath.startsWith('/')) reqPath = reqPath.slice(1);
     const absolutePath = pathModule.normalize(pathModule.join(uploadTarget, reqPath));
     
+    // Extract groupId from the path: e.g. /uploads/groups/GROUP_ID/photos/...
+    const pathParts = reqPath.split('/');
+    if (pathParts.length >= 2 && pathParts[0] === 'groups') {
+      const groupId = pathParts[1];
+      
+      const membership = await prisma.groupMember.findFirst({
+        where: {
+          userId: req.userId,
+          groupId: groupId,
+        },
+      });
+
+      if (!membership) {
+        return res.status(403).send('Forbidden: Not a member of this group');
+      }
+    } else {
+        return res.status(403).send('Forbidden: Invalid path structure');
+    }
+
     // Confirm the path is still within uploadTarget (prevent tricks)
     if (!absolutePath.startsWith(pathModule.normalize(uploadTarget))) {
       return res.status(403).send('Forbidden');
