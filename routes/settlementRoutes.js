@@ -136,6 +136,7 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       });
     }
 
+    // Create reimbursement transaction (with deduplication)
     const transaction = await settlementService.markSettlementAsPaid(
       groupId,
       fromUserId,
@@ -143,6 +144,14 @@ router.post('/groups/:groupId/settlements/mark-paid', async (req, res) => {
       parsedAmount,
       currency
     );
+
+    if (transaction.duplicate) {
+      return res.status(409).json({
+        success: false,
+        error: 'Duplicate settlement: this settlement has already been marked as paid',
+        data: transaction,
+      });
+    }
 
     // Notify the creditor that payment was received
     notificationService.sendToUser(toUserId, {

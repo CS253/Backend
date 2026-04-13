@@ -236,30 +236,30 @@ function greedyAlgorithm(balances) {
  * @returns {Object} Created expense record (reimbursement)
  */
 async function markSettlementAsPaid(groupId, fromUserId, toUserId, amount, currency) {
-  // Prevent duplicate settlements (idempotency/double-spend check)
-  // Check if an exact identical reimbursement was created in the last 5 minutes
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-  
-  const recentDuplicate = await prisma.expense.findFirst({
+  const DEDUP_WINDOW_SECONDS = 60;
+
+  // Time-window deduplication: reject identical reimbursements created within the last 60s
+  const deduplicationCutoff = new Date(Date.now() - DEDUP_WINDOW_SECONDS * 1000);
+
+  const existingReimbursement = await prisma.expense.findFirst({
     where: {
       groupId,
       paidBy: fromUserId,
       amount,
       currency,
-      title: 'Reimbursement: Payment received',
-      date: {
-        gte: fiveMinutesAgo
-      },
+      title: { startsWith: 'Reimbursement:' },
+      createdAt: { gte: deduplicationCutoff },
       splits: {
         some: {
-          userId: toUserId
-        }
-      }
-    }
+          userId: toUserId,
+        },
+      },
+    },
+    include: { splits: true },
   });
 
-  if (recentDuplicate) {
-    throw new Error('A settlement for this exact amount was already recorded recently. Please avoid duplicate submissions.');
+  if (existingReimbursement) {
+    return { ...existingReimbursement, duplicate: true };
   }
 
   // Create a reimbursement as an expense where:
