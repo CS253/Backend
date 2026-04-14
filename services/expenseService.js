@@ -248,10 +248,6 @@ async function updateExpense(expenseId, data) {
     throw new Error(`Expense with ID ${expenseId} not found`);
   }
 
-  // IDOR check: Only the payer can modify the expense
-  if (userId && existingExpense.paidBy !== userId) {
-    throw new Error('Unauthorized: Only the user who paid for this expense can update it');
-  }
 
   // Fetch group for validation
   const group = await prisma.group.findUnique({
@@ -398,10 +394,6 @@ async function deleteExpense(expenseId, userId) {
     throw new Error(`Expense with ID ${expenseId} not found`);
   }
 
-  // IDOR check: Only the payer can delete the expense
-  if (userId && existingExpense.paidBy !== userId) {
-    throw new Error('Unauthorized: Only the user who paid for this expense can delete it');
-  }
 
   // Delete associated splits first
   await prisma.expenseSplit.deleteMany({
