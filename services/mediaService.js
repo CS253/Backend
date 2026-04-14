@@ -363,11 +363,6 @@ exports.uploadMedia = async ({ userId, groupId, requestedType, responseVariant, 
 exports.deleteSingleMedia = async ({ userId, id, mediaType }) => {
   const media = await loadMediaForAccess(id, mediaType);
   
-  // IDOR check: Only the uploader can delete their media
-  if (media.uploadedBy !== userId) {
-    throw new AppError(403, "Unauthorized: Only the uploader can delete this media");
-  }
-
   await ensureGroupMembership(userId, media.groupId);
 
   await prisma.media.delete({
@@ -403,11 +398,6 @@ exports.deleteManyMedia = async ({ userId, ids, mediaType }) => {
   for (const item of mediaItems) {
     if (mediaType && item.mediaType !== mediaType) {
       throw new AppError(404, "One or more media items were not found");
-    }
-
-    // IDOR check: Only the uploader can delete their media
-    if (item.uploadedBy !== userId) {
-      throw new AppError(403, "Unauthorized: You can only delete media that you uploaded");
     }
 
     await ensureGroupMembership(userId, item.groupId);
