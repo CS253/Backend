@@ -444,7 +444,7 @@ const getGroupPhoto = async ({ userId, groupId }) => {
 };
 
 const upsertGroupPhoto = async ({ userId, groupId, file }) => {
-  const group = await ensureGroupCreator(userId, groupId);
+  const group = await ensureGroupMember(userId, groupId);
   const mimeType = resolveGroupPhotoMimeType(file);
 
   if (!file) {
@@ -500,7 +500,7 @@ const upsertGroupPhoto = async ({ userId, groupId, file }) => {
 };
 
 const deleteGroupPhoto = async ({ userId, groupId }) => {
-  const group = await ensureGroupCreator(userId, groupId);
+  const group = await ensureGroupMember(userId, groupId);
   const photoUrl = resolveGroupCoverImage(group);
 
   if (!photoUrl || !group.photoPath) {
