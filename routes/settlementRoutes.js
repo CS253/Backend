@@ -233,13 +233,28 @@ router.post('/groups/:groupId/settlements/initiate-payment', async (req, res) =>
       });
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'amount must be a positive number',
+      });
+    }
+
     const { decrypt } = require('../utils/encryption');
-    const decodedUpiId = decrypt(recipient.upiId);
-    const encodedUpiId = encodeURIComponent(decodedUpiId);
-    const encodedName = encodeURIComponent(recipient.name || "Unknown");
-    const encodedNotes = encodeURIComponent("Travelly Reimbursement");
-    const encodedAmount = encodeURIComponent(amount);
-    const paymentLink = `upi://pay?pa=${encodedUpiId}&pn=${encodedName}&am=${encodedAmount}&tn=${encodedNotes}`;
+    const decodedUpiId = decrypt(recipient.upiId).trim();
+    const recipientName = (recipient.name || 'Travelly User').trim();
+    const safeCurrency = String(currency || 'INR').toUpperCase();
+
+    const params = new URLSearchParams({
+      pa: decodedUpiId,
+      pn: recipientName,
+      am: parsedAmount.toFixed(2),
+      tn: 'Travelly Reimbursement',
+      cu: safeCurrency,
+    });
+
+    const paymentLink = `upi://pay?${params.toString()}`;
 
     return res.json({
       success: true,
