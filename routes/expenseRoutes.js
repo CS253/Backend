@@ -44,19 +44,14 @@ router.post('/groups/:groupId/expenses', async (req, res) => {
     const { groupId } = req.params;
     const { title, amount, paidBy, currency, split, notes, date } = req.body;
 
-    // vuln-26 fix: prevent auth impersonation — paidBy must be the authenticated user
-    if (paidBy && paidBy !== req.userId) {
-      return res.status(403).json({
-        success: false,
-        error: 'You can only record expenses where you are the payer',
-      });
-    }
+    // Support recorded expenses for others (any group member can record for another)
+    const payerId = paidBy || req.userId;
 
     const expense = await expenseService.createExpense({
       groupId,
       title,
       amount: parseFloat(amount),
-      paidBy: req.userId, // always use the authenticated user's ID
+      paidBy: payerId,
       currency,
       split,
       notes,

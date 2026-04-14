@@ -81,7 +81,7 @@ function normalizeTransactions(transactions) {
       throw new Error('Invalid transaction format');
     }
 
-    const amount = Math.floor(tx.amount);
+    const amount = tx.amount;
     if (amount < 0) {
       throw new Error('Negative amounts not allowed');
     }
