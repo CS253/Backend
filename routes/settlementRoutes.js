@@ -360,12 +360,21 @@ router.put('/groups/:groupId/settings/simplify-debts', async (req, res) => {
     }
 
     // vuln-12 fix: only group creator can toggle this setting
-    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    const group = await prisma.group.findUnique({ 
+      where: { id: groupId },
+      select: { createdBy: true, id: true } 
+    });
+
     if (!group) {
       return res.status(404).json({ success: false, error: 'Group not found' });
     }
+
+    // Explicitly check if the authenticated user is the group creator
     if (group.createdBy !== req.userId) {
-      return res.status(403).json({ success: false, error: 'Only the group creator can change this setting' });
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Unauthorized: Only the group creator can modify group-level settings' 
+      });
     }
 
     const updatedGroup = await settlementService.updateSimplifyDebtsSetting(
